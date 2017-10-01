@@ -1,0 +1,19 @@
+{
+  "name": "elm-express-realworld",
+  "version": "1.0.0",
+  "description": "Experiment to translate the RealWorld Node Express example app to Elm. Just because I like Elm and I want to see if I can do this.",
+  "main": "index.js",
+  "dependencies": {
+    "elm": "^0.18.0"
+  },
+  "devDependencies": {
+    "elm": "^0.18.0"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "elm-make elm/Main.elm --output elm.js",
+    "start": "npm run build && node app.js hello"
+  },
+  "author": "",
+  "license": "ISC"
+}
