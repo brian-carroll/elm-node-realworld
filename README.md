@@ -30,3 +30,24 @@ Just because I like Elm and I want to see if I can do this.
     - Probably get to use some of the 0.19 SPA routing stuff?
 - Build up a Response structure
     - with status, head, and body
+
+## Database
+- Mongo
+    - Elm JSON encode/decode for validation
+    - Easier option
+
+- SQL
+    - Functions concatenating SQL strings?
+    - Generate SQL using some sort of DSL (like html lib or elm-css)
+        - Can probably find similar in Haskell / F# / OCaml / PureScript
+    - SQL files, imported on startup? What about text substitution?
+
+- How to do async?
+    - Native module with Tasks
+        - can use andThen and stuff
+    - Ports
+        - when controller wants to do something async, it needs to
+            - return a port command
+            - let JS do the async stuff using a Promise
+            - execute the Elm code again, route down to the controller again
+            - Have an extra "step 2" in the route. Match against this and 
