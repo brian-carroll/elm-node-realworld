@@ -42,12 +42,31 @@ Just because I like Elm and I want to see if I can do this.
         - Can probably find similar in Haskell / F# / OCaml / PureScript
     - SQL files, imported on startup? What about text substitution?
 
-- How to do async?
-    - Native module with Tasks
-        - can use andThen and stuff
-    - Ports
-        - when controller wants to do something async, it needs to
-            - return a port command
-            - let JS do the async stuff using a Promise
-            - execute the Elm code again, route down to the controller again
-            - Have an extra "step 2" in the route. Match against this and 
+- CouchDB
+    - Has a HTTP & JSON interface! Nice!
+    - Can just use it with normal Elm, even Tasks :)
+
+
+## Async ports
+- Native module with Tasks
+    - can use andThen and stuff
+- Ports
+    - Must be Commands
+    - Two-step approach
+        - Could have different Message types for before and after
+    - Pseudo-tasks
+        - Port command has to carry data only, but we can put a callback function in the app State
+        - Give each command a unique ID, pass it out to JS and back.
+        - Store the callback closures in a Dict on the state against the unique ID
+        - When the return port Message comes in, pluck the closure out of the Dict and apply it to the data
+            - Need to JSON decode it first
+        - Function stored in the state can be as general as `Json.value -> (Model, Cmd)`
+
+## Connections
+- There is normally only one Elm instance
+    - could re-init each time but that's slow
+- Responses could come out of Elm in a different order than requests go in, since we're doing async stuff
+- We need to pass some connection identifier into Elm along with the request
+    - Keep a dictionary object with UUID keys on the JS side, then pass the ID through Elm?
+    - Pass the actual object reference?
+        - Can I pass a Json.value into Elm and back out?
