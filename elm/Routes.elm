@@ -1,7 +1,6 @@
 module Routes exposing (..)
 
-import Request exposing (Request)
-import Response exposing (Response, HttpStatus(..), error, success)
+import Connection exposing (Connection, Response, HttpStatus(..), errorResponse, successResponse)
 import UrlParser exposing (Parser, (</>), s, string, map, oneOf, parseString)
 
 
@@ -17,28 +16,16 @@ type Permissions
     | AuthOptional
 
 
-type Username
-    = Username String
-
-
-type ArticleId
-    = ArticleId String
-
-
-type CommentId
-    = CommentId String
-
-
 type Route
     = Tags
-    | Profiles Username
-    | ProfilesFollow Username
+    | Profiles String
+    | ProfilesFollow String
     | Articles
     | ArticlesFeed
-    | ArticleSingle ArticleId
-    | ArticleFavourite ArticleId
-    | ArticleComments ArticleId
-    | ArticleCommentsDelete ArticleId CommentId
+    | ArticleSingle String
+    | ArticleFavourite String
+    | ArticleComments String
+    | ArticleCommentsDelete String String
     | Users
     | UsersLogin
     | User
@@ -52,14 +39,14 @@ routeParser : Parser (Route -> a) a
 routeParser =
     oneOf
         [ map Tags (s "tags")
-        , map (Profiles << Username) (s "profiles" </> string)
-        , map (ProfilesFollow << Username) (s "profiles" </> string </> s "follow")
+        , map Profiles (s "profiles" </> string)
+        , map ProfilesFollow (s "profiles" </> string </> s "follow")
         , map Articles (s "articles")
         , map ArticlesFeed (s "articles" </> s "feed")
-        , map (ArticleSingle << ArticleId) (s "articles" </> string)
-        , map (ArticleFavourite << ArticleId) (s "articles" </> string </> s "favourite")
-        , map (ArticleComments << ArticleId) (s "articles" </> string </> s "comments")
-        , map (\a c -> ArticleCommentsDelete (ArticleId a) (CommentId c)) (s "articles" </> string </> s "comments" </> string)
+        , map ArticleSingle (s "articles" </> string)
+        , map ArticleFavourite (s "articles" </> string </> s "favourite")
+        , map ArticleComments (s "articles" </> string </> s "comments")
+        , map ArticleCommentsDelete (s "articles" </> string </> s "comments" </> string)
         , map Users (s "users")
         , map UsersLogin (s "users" </> s "login")
         , map User (s "user")
@@ -88,60 +75,61 @@ methodParser s =
 
 -- All of this stuff should really be returning Cmds or Tasks or something
 -- Tasks are probably nicer, they usually are.
--- In cases where we don't need async, just use the `success` task
+-- In cases where we don't need async, just use the `successResponse` task
 -- Have to convert to Cmd in the top-level update, so just do it there
 
 
-processRequest : Request -> Response
-processRequest req =
-    case methodParser req.method of
+generateResponse : Connection -> Response
+generateResponse conn =
+    case methodParser conn.request.method of
         Nothing ->
-            error MethodNotAllowed
+            errorResponse MethodNotAllowed conn.response
 
         Just method ->
-            case parseString routeParser req.urlPath of
+            case parseString routeParser conn.request.urlPath of
                 Nothing ->
-                    error NotFound
+                    errorResponse NotFound conn.response
 
                 Just route ->
-                    selectRoute method route req.body
+                    selectRoute route conn
 
 
-selectRoute : Method -> Route -> String -> Response
-selectRoute method route =
-    case route of
-        Tags ->
-            success "tags"
+selectRoute : Route -> Connection -> Response
+selectRoute route conn =
+    conn.response
+        |> case route of
+            Tags ->
+                successResponse "tags"
 
-        Profiles username ->
-            success <| "profiles " ++ username
+            Profiles username ->
+                successResponse <| "profiles " ++ username
 
-        ProfilesFollow username ->
-            success <| "profiles follow " ++ username
+            ProfilesFollow username ->
+                successResponse <| "profiles follow " ++ username
 
-        Articles ->
-            success "articles"
+            Articles ->
+                successResponse "articles"
 
-        ArticlesFeed ->
-            success "articles feed"
+            ArticlesFeed ->
+                successResponse "articles feed"
 
-        ArticleSingle articleId ->
-            success <| "single article " ++ articleId
+            ArticleSingle articleId ->
+                successResponse <| "single article " ++ articleId
 
-        ArticleFavourite articleId ->
-            success <| "article favourite " ++ articleId
+            ArticleFavourite articleId ->
+                successResponse <| "article favourite " ++ articleId
 
-        ArticleComments articleId ->
-            success <| "article comments " ++ articleId
+            ArticleComments articleId ->
+                successResponse <| "article comments " ++ articleId
 
-        ArticleCommentsDelete articleId commentId ->
-            success <| "delete article " ++ articleId
+            ArticleCommentsDelete articleId commentId ->
+                successResponse <| "delete comment " ++ commentId ++ " from " ++ articleId
 
-        Users ->
-            success "users"
+            Users ->
+                successResponse "users"
 
-        UsersLogin ->
-            success "login"
+            UsersLogin ->
+                successResponse "login"
 
-        User ->
-            success "user"
+            User ->
+                successResponse "user"

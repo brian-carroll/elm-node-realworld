@@ -5,7 +5,7 @@ module Connection
         , Response
         , HttpStatus(..)
         , decodeConnection
-        , error
+        , errorResponse
         , successResponse
         , encodeResponse
         )
@@ -111,8 +111,8 @@ mapHttpStatus code =
             ( 500, "Internal Error" )
 
 
-error : HttpStatus -> Response -> Response
-error status response =
+errorResponse : HttpStatus -> Response -> Response
+errorResponse status response =
     let
         ( num, str ) =
             mapHttpStatus status

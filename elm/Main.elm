@@ -1,7 +1,8 @@
 port module Main exposing (main)
 
 import Json.Decode as JS
-import Connection exposing (Response, Request, Connection, decodeConnection, successResponse, encodeResponse)
+import Connection exposing (Connection, decodeConnection, encodeResponse)
+import Routes exposing (generateResponse)
 
 
 port elmToJs : JS.Value -> Cmd msg
@@ -35,7 +36,7 @@ update msg model =
 
                         res =
                             encodeResponse <|
-                                successResponse "Right back atcha" conn.response
+                                generateResponse conn
                     in
                         ( model, elmToJs res )
 
