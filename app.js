@@ -7,29 +7,19 @@ const elmApp = Elm.Main.worker();
 
 elmApp.ports.elmToJs.subscribe(elmResponseObject => {
   const { nodeResponseObject, statusCode, headers, body } = elmResponseObject;
-  nodeResponseObject.statusCode = statusCode;
-  for (const key in headers) {
-    nodeResponseObject.setHeader(key, headers[key]);
-  }
+  nodeResponseObject.writeHead(statusCode, headers);
   nodeResponseObject.end(JSON.stringify(body));
 });
 
 const server = http.createServer((request, response) => {
-  let body = [];
+  let bodyChunks = [];
   request
     .on('data', chunk => {
-      body.push(chunk);
+      bodyChunks.push(chunk);
     })
     .on('end', () => {
-      const bodyString = Buffer.concat(body).toString();
-      elmApp.ports.jsToElm.send({
-        request: {
-          url: request.url,
-          method: request.method,
-          body: bodyString,
-        },
-        response: response,
-      });
+      request.body = Buffer.concat(bodyChunks).toString();
+      elmApp.ports.jsToElm.send({ request, response });
     });
 });
 

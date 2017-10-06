@@ -12,6 +12,7 @@ module Connection
 
 import Json.Decode as JD
 import Json.Encode as JE
+import Dict exposing (Dict)
 
 
 type alias Connection =
@@ -23,6 +24,7 @@ type alias Connection =
 type alias Request =
     { method : String
     , urlPath : String
+    , headers : Dict String String
     , body : String
     }
 
@@ -30,7 +32,7 @@ type alias Request =
 type alias Response =
     { nodeResponseObject : JD.Value
     , statusCode : Int
-    , headers : List ( String, String )
+    , headers : Dict String String
     , body : String
     }
 
@@ -44,9 +46,10 @@ decodeConnection =
 
 decodeRequest : JD.Decoder Request
 decodeRequest =
-    JD.map3 Request
+    JD.map4 Request
         (JD.field "method" JD.string)
         (JD.field "url" JD.string)
+        (JD.field "headers" <| JD.dict JD.string)
         (JD.field "body" JD.string)
 
 
@@ -69,18 +72,20 @@ encodeResponse response =
         ]
 
 
-encodeHeaders : List ( String, String ) -> JE.Value
+encodeHeaders : Dict String String -> JE.Value
 encodeHeaders headers =
     headers
-        |> List.map (\( k, v ) -> ( k, JE.string v ))
+        |> Dict.map (\_ -> JE.string)
+        |> Dict.toList
         |> JE.object
 
 
-defaultHeaders : List ( String, String )
+defaultHeaders : Dict String String
 defaultHeaders =
-    [ ( "Content-Type", "application/json; charset=utf-8" )
-    , ( "Accept", "application/json" )
-    ]
+    Dict.fromList
+        [ ( "Content-Type", "application/json" )
+        , ( "Accept", "application/json" )
+        ]
 
 
 type HttpStatus
