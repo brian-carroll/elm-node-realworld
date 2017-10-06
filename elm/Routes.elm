@@ -91,45 +91,48 @@ generateResponse conn =
                     errorResponse NotFound conn.response
 
                 Just route ->
-                    selectRoute route conn
+                    let
+                        routeHandler =
+                            selectRouteHandler route
+                    in
+                        routeHandler method conn
 
 
-selectRoute : Route -> Connection -> Response
-selectRoute route conn =
-    conn.response
-        |> case route of
-            Tags ->
-                successResponse "tags"
+selectRouteHandler : Route -> (Method -> Connection -> Response)
+selectRouteHandler route =
+    case route of
+        Tags ->
+            \_ conn -> successResponse "tags" conn.response
 
-            Profiles username ->
-                successResponse <| "profiles " ++ username
+        Profiles username ->
+            \_ conn -> successResponse ("profiles " ++ username) conn.response
 
-            ProfilesFollow username ->
-                successResponse <| "profiles follow " ++ username
+        ProfilesFollow username ->
+            \_ conn -> successResponse ("profiles follow " ++ username) conn.response
 
-            Articles ->
-                successResponse "articles"
+        Articles ->
+            \_ conn -> successResponse "articles" conn.response
 
-            ArticlesFeed ->
-                successResponse "articles feed"
+        ArticlesFeed ->
+            \_ conn -> successResponse "articles feed" conn.response
 
-            ArticleSingle articleId ->
-                successResponse <| "single article " ++ articleId
+        ArticleSingle articleId ->
+            \_ conn -> successResponse ("single article " ++ articleId) conn.response
 
-            ArticleFavourite articleId ->
-                successResponse <| "article favourite " ++ articleId
+        ArticleFavourite articleId ->
+            \_ conn -> successResponse ("article favourite " ++ articleId) conn.response
 
-            ArticleComments articleId ->
-                successResponse <| "article comments " ++ articleId
+        ArticleComments articleId ->
+            \_ conn -> successResponse ("article comments " ++ articleId) conn.response
 
-            ArticleCommentsDelete articleId commentId ->
-                successResponse <| "delete comment " ++ commentId ++ " from " ++ articleId
+        ArticleCommentsDelete articleId commentId ->
+            \_ conn -> successResponse ("delete comment " ++ commentId ++ " from " ++ articleId) conn.response
 
-            Users ->
-                successResponse "users"
+        Users ->
+            \_ conn -> successResponse "users" conn.response
 
-            UsersLogin ->
-                successResponse "login"
+        UsersLogin ->
+            \_ conn -> successResponse "login" conn.response
 
-            User ->
-                successResponse "user"
+        User ->
+            \_ conn -> successResponse "user" conn.response
