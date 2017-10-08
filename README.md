@@ -70,3 +70,58 @@ Just because I like Elm and I want to see if I can do this.
     - Keep a dictionary object with UUID keys on the JS side, then pass the ID through Elm?
     - Pass the actual object reference?
         - Can I pass a Json.value into Elm and back out?
+
+
+## Pipeline
+- Decode request (method, url, headers, body)
+- Parse route
+- From route and method, choose pipeline
+- Run each transformation in pipeline
+- Pipeline transformation is either middleware or endpoint
+    - Middleware = Connection -> Connection
+    - Endpoint = Connection -> Response
+- Any Middleware or Endpoint can generate a command and continuation function
+- Would be nice to have a dummy continuation with no effects
+- perform Task.succeed with a message
+- Connection could hold extra meta data
+- might be able to use extensible records to get some polymorphism
+- If a pipeline stage needs certain inputs it can put constraints on the metadata record type
+
+## How to handle route?
+- Would be nice to add route to Connection.request
+
+## Example pipeline for creating user
+- Decode request (method, url, headers, body)
+- Parse route
+- From route and method, choose pipeline
+- Pipeline
+    - validate input JSON (pure)
+    - generate random salt (Elm effect)
+    - hash password (pure)
+    - assemble DB JSON (pure)
+    - send JSON to DB (HTTP effect, task)
+    - receive DB response (task andThen)
+    - transform DB JSON to response JSON (pure)
+    - respond to user (port effect)
+
+So if a pipeline stage returns an effect then the next stage
+needs to be a function of a matching type
+Very monadic
+
+Can't do this as a list, needs to be a composition
+stage1 >> stage2 >> stage3
+
+doCmdAndContinue : Conn -> a -> Cmd Msg
+
+
+stage1 : Conn -> Cmd (Conn -> a -> Msg)
+stage2 : Conn -> a -> (Conn, Cmd )
+
+
+## experiments
+- do a trivial command (task.succeed)
+
+
+dummyCmd : (a -> Msg) -> a -> Cmd Msg
+dummyCmd msg payload =
+  Task.perform msg (Task.succeed payload)

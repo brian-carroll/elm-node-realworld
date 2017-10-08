@@ -1,9 +1,6 @@
 module Connection
     exposing
-        ( Connection
-        , Request
-        , Response
-        , HttpStatus(..)
+        ( HttpStatus(..)
         , decodeConnection
         , errorResponse
         , successResponse
@@ -13,28 +10,7 @@ module Connection
 import Json.Decode as JD
 import Json.Encode as JE
 import Dict exposing (Dict)
-
-
-type alias Connection =
-    { request : Request
-    , response : Response
-    }
-
-
-type alias Request =
-    { method : String
-    , urlPath : String
-    , headers : Dict String String
-    , body : String
-    }
-
-
-type alias Response =
-    { nodeResponseObject : JD.Value
-    , statusCode : Int
-    , headers : Dict String String
-    , body : String
-    }
+import Types exposing (..)
 
 
 decodeConnection : JD.Decoder Connection
@@ -47,10 +23,47 @@ decodeConnection =
 decodeRequest : JD.Decoder Request
 decodeRequest =
     JD.map4 Request
-        (JD.field "method" JD.string)
+        (JD.field "method" decodeMethod)
         (JD.field "url" JD.string)
         (JD.field "headers" <| JD.dict JD.string)
         (JD.field "body" JD.string)
+
+
+
+-- decodeRoute : JD.Decoder Route
+-- decodeRoute =
+--     JD.string
+--         |> JD.andThen
+--             (\s ->
+--                 case routeParser s of
+--                     Just route ->
+--                         JD.succeed route
+--                     Nothing ->
+--                         JD.fail "Route"
+--             )
+
+
+decodeMethod : JD.Decoder Method
+decodeMethod =
+    JD.string
+        |> JD.andThen
+            (\s ->
+                case s of
+                    "GET" ->
+                        JD.succeed Get
+
+                    "POST" ->
+                        JD.succeed Post
+
+                    "PUT" ->
+                        JD.succeed Put
+
+                    "DELETE" ->
+                        JD.succeed Delete
+
+                    _ ->
+                        JD.fail ("Method")
+            )
 
 
 decodeResponse : JD.Decoder Response
@@ -90,9 +103,12 @@ defaultHeaders =
 
 type HttpStatus
     = Ok
+    | BadRequest
     | NotFound
     | MethodNotAllowed
+    | RequestTimeout
     | InternalError
+    | ServiceUnavailable
 
 
 mapHttpStatus : HttpStatus -> ( Int, String )
@@ -101,14 +117,23 @@ mapHttpStatus code =
         Ok ->
             ( 200, "OK" )
 
+        BadRequest ->
+            ( 400, "Bad Request" )
+
         NotFound ->
             ( 404, "Not Found" )
 
         MethodNotAllowed ->
             ( 405, "Method Not Allowed" )
 
+        RequestTimeout ->
+            ( 408, "Request Timeout" )
+
         InternalError ->
             ( 500, "Internal Error" )
+
+        ServiceUnavailable ->
+            ( 503, "Service Unavailable" )
 
 
 errorResponse : HttpStatus -> Response -> Response
@@ -124,8 +149,8 @@ errorResponse status response =
 
 
 successResponse : String -> Response -> Response
-successResponse json response =
+successResponse str response =
     { response
         | statusCode = 200
-        , body = json
+        , body = str
     }

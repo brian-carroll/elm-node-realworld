@@ -1,3 +1,5 @@
+global.XMLHttpRequest = require('./xhr-elm'); // Must require before Elm
+
 const http = require('http');
 const Elm = require('./elm');
 

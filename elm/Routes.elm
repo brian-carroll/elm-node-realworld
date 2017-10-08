@@ -1,38 +1,8 @@
 module Routes exposing (..)
 
-import Connection exposing (Connection, Response, HttpStatus(..), errorResponse, successResponse)
+import Connection exposing (HttpStatus(..), errorResponse, successResponse)
 import UrlParser exposing (Parser, (</>), s, string, map, oneOf, parseString)
-
-
-type Method
-    = Get
-    | Post
-    | Put
-    | Delete
-
-
-type Permissions
-    = AuthRequired
-    | AuthOptional
-
-
-type Route
-    = Tags
-    | Profiles String
-    | ProfilesFollow String
-    | Articles
-    | ArticlesFeed
-    | ArticleSingle String
-    | ArticleFavourite String
-    | ArticleComments String
-    | ArticleCommentsDelete String String
-    | Users
-    | UsersLogin
-    | User
-
-
-type Endpoint
-    = Endpoint Route Method Permissions (String -> Response)
+import Types exposing (..)
 
 
 routeParser : Parser (Route -> a) a
@@ -53,25 +23,6 @@ routeParser =
         ]
 
 
-methodParser : String -> Maybe Method
-methodParser s =
-    case s of
-        "GET" ->
-            Just Get
-
-        "POST" ->
-            Just Post
-
-        "PUT" ->
-            Just Put
-
-        "DELETE" ->
-            Just Delete
-
-        _ ->
-            Nothing
-
-
 
 -- All of this stuff should really be returning Cmds or Tasks or something
 -- Tasks are probably nicer, they usually are.
@@ -81,21 +32,16 @@ methodParser s =
 
 generateResponse : Connection -> Response
 generateResponse conn =
-    case methodParser conn.request.method of
+    case parseString routeParser conn.request.url of
         Nothing ->
-            errorResponse MethodNotAllowed conn.response
+            errorResponse NotFound conn.response
 
-        Just method ->
-            case parseString routeParser conn.request.urlPath of
-                Nothing ->
-                    errorResponse NotFound conn.response
-
-                Just route ->
-                    let
-                        routeHandler =
-                            selectRouteHandler route
-                    in
-                        routeHandler method conn
+        Just route ->
+            let
+                routeHandler =
+                    selectRouteHandler route
+            in
+                routeHandler conn.request.method conn
 
 
 selectRouteHandler : Route -> (Method -> Connection -> Response)
@@ -136,3 +82,43 @@ selectRouteHandler route =
 
         User ->
             \_ conn -> successResponse "user" conn.response
+
+
+
+{-
+
+
+   post  '/users'    -- create new user
+   post  '/users/login'
+
+   get  '/user'  auth.required   -- return most fields
+   put  '/user'  auth.required   -- modify
+
+
+
+   get  '/tags/'
+
+   get  '/profiles/:username'  auth.optional
+   post  '/profiles/:username/follow'  auth.required
+   delete  '/profiles/:username/follow'  auth.required
+
+   get  '/articles/'  auth.optional
+   post  '/articles/'  auth.required
+
+   get  '/articles/feed'  auth.required
+
+   get  '/articles/:article'  auth.optional
+   put  '/articles/:article'  auth.required
+   delete  '/articles/:article'  auth.required
+
+   post  '/articles/:article/favorite'  auth.required
+   delete  '/articles/:article/favorite'  auth.required
+
+   post  '/articles/:article/comments'  auth.required
+   get  '/articles/:article/comments'  auth.optional
+   delete  '/articles/:article/comments/:comment'  auth.required
+
+
+
+
+-}

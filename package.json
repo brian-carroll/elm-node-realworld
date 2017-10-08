@@ -1,10 +1,11 @@
 {
-  "name": "elm-express-realworld",
+  "name": "elm-node-realworld",
   "version": "1.0.0",
-  "description": "Experiment to translate the RealWorld Node Express example app to Elm. Just because I like Elm and I want to see if I can do this.",
+  "description": "Experiment to translate the RealWorld Node example app to Elm. Just because I like Elm and I want to see if I can do this.",
   "main": "index.js",
   "dependencies": {
-    "elm": "^0.18.0"
+    "elm": "^0.18.0",
+    "xmlhttprequest": "^1.8.0"
   },
   "devDependencies": {
     "elm": "^0.18.0"
