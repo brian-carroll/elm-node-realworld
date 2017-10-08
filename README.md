@@ -2,34 +2,13 @@
 Experiment to translate the RealWorld Node Express example app to Elm.
 Just because I like Elm and I want to see if I can do this.
 
-## Interactions with Express
-- Router
-    - Toplevel routing with `router.use('/thing', subRouter)`
-    - Declare endpoints with `.get()`, `.post()`, `.put()`, `.delete()`
-    - Declare URL params with `.param()`
-        - Allows use of `:myParamName` in URLs
-        - Attach `.myParamName` to `request.params` object
-        - _Must be called before routes that use it_
-
-
-- Elm routing
-    - Union Types
-    - Logic for controllers defined in Elm functions
-
-- Elm/JS interface
-    - Do I want Express to do the actual routing or not?
-    - Could define my routes in Elm datastructures, then run an initialisation function on the tree
-        - Express router will call the same handler for every route, then delegate to Elm, which dispatches depending on route
-    - 
-
-- Auth
-    - Could just define it as a Union Type, optional or required
-
-## What if I use just Node, not Express?
+## Just Node, not Express
+- Express feels like it's designed for mutation and dynamic types. Better to go bare-bones Node.
 - Get the URL as a String and parse it into a Route structure
-    - Probably get to use some of the 0.19 SPA routing stuff?
 - Build up a Response structure
     - with status, head, and body
+    - pass around a reference to the Node response object as an opaque Json.Encode.Value,
+        then just pass it back out to JS when ready and call methods on it!
 
 ## Database
 - Mongo
@@ -48,13 +27,17 @@ Just because I like Elm and I want to see if I can do this.
 
 
 ## Async ports
-- Native module with Tasks
-    - can use andThen and stuff
+- How to do effects in the middle of a chain of operations while maintaining its association with
+   a particular request? `Task`s can do that via `andThen`, but `Cmd`s can't.
+- Use native/kernel modules so I can create `Task`s?
+    - Decided this was a nightmare.
+    - Murphy Randle seemed to back that up shortly afterwards at Elm Conf US 2017!
 - Ports
-    - Must be Commands
-    - Two-step approach
-        - Could have different Message types for before and after
-    - Pseudo-tasks
+    - Ports must be `Cmd`s, can't be `Task`s
+    - Callbacks
+        - When you create a command, you also have to give it a `Msg` constructor function (`a -> Msg`)
+        - That constructor function doesn't have to be a simple type constructor as usual. It can be arbitrarily complex. In fact it can be a callback representing _everything_ you want to do after you get the effect data, until you're ready to generate a response. (I think this is what they call 'continuation passing style')
+    - Rejected idea: Pseudo-tasks
         - Port command has to carry data only, but we can put a callback function in the app State
         - Give each command a unique ID, pass it out to JS and back.
         - Store the callback closures in a Dict on the state against the unique ID
@@ -70,6 +53,7 @@ Just because I like Elm and I want to see if I can do this.
     - Keep a dictionary object with UUID keys on the JS side, then pass the ID through Elm?
     - Pass the actual object reference?
         - Can I pass a Json.value into Elm and back out?
+        - Yes. Yes I can.
 
 
 ## Pipeline
