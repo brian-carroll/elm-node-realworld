@@ -10,7 +10,7 @@ const elmApp = Elm.Main.worker();
 elmApp.ports.elmToJs.subscribe(elmResponseObject => {
   const { nodeResponseObject, statusCode, headers, body } = elmResponseObject;
   nodeResponseObject.writeHead(statusCode, headers);
-  nodeResponseObject.end(JSON.stringify(body));
+  nodeResponseObject.end(body);
 });
 
 const server = http.createServer((request, response) => {
