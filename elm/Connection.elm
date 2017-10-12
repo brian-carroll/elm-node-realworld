@@ -15,9 +15,10 @@ import Types exposing (..)
 
 decodeConnection : JD.Decoder Connection
 decodeConnection =
-    JD.map2 Connection
+    JD.map3 Connection
         (JD.field "request" decodeRequest)
         (JD.field "response" decodeResponse)
+        (JD.succeed ( 0, 0 ))
 
 
 decodeRequest : JD.Decoder Request
@@ -102,7 +103,7 @@ defaultHeaders =
 
 
 type HttpStatus
-    = Ok
+    = HttpOk
     | BadRequest
     | NotFound
     | MethodNotAllowed
@@ -114,7 +115,7 @@ type HttpStatus
 mapHttpStatus : HttpStatus -> ( Int, String )
 mapHttpStatus code =
     case code of
-        Ok ->
+        HttpOk ->
             ( 200, "OK" )
 
         BadRequest ->

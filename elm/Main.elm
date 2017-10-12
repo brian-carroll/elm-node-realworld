@@ -1,14 +1,62 @@
-module Main exposing (main)
+port module Main exposing (main)
 
 import Json.Decode as JD
 import Json.Encode as JE
-import Connection exposing (decodeConnection, encodeResponse, successResponse, errorResponse)
-import Routes exposing (generateResponse)
+import Connection exposing (..)
 import Models.User exposing (..)
 import Types exposing (..)
-import Ports exposing (elmToJs, jsToElm)
 import Http
 import Task exposing (Task)
+import Dict
+import Time
+
+
+port elmToJs : JsInterface -> Cmd msg
+
+
+port jsToElm : (JsInterface -> msg) -> Sub msg
+
+
+decodeDataFromJs : JsInterface -> InboundPortData
+decodeDataFromJs jsData =
+    let
+        decoder =
+            case jsData.tag of
+                "NewConnection" ->
+                    JD.map NewConnection decodeConnection
+
+                "JsActionResult" ->
+                    JD.map2 JsActionResult
+                        (JD.succeed jsData.connectionId)
+                        JD.value
+
+                "JsError" ->
+                    JD.map InboundPortError JD.string
+
+                _ ->
+                    JD.fail "Unknown tag, JS -> Elm"
+    in
+        case JD.decodeValue decoder jsData.payload of
+            Ok x ->
+                x
+
+            Err str ->
+                InboundPortError str
+
+
+jsActionCmd : OutboundPortAction -> Connection -> Cmd Msg
+jsActionCmd elmData conn =
+    elmToJs
+        { connectionId = conn.id
+        , tag = toString elmData |> String.words |> List.head |> Maybe.withDefault "Unknown"
+        , payload =
+            case elmData of
+                RespondToClient ->
+                    encodeResponse conn.response
+
+                HashPassword plain ->
+                    JE.string plain
+        }
 
 
 main : Program Never Model Msg
@@ -21,39 +69,86 @@ main =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions =
-    (\_ -> jsToElm ConnectionReceived)
+subscriptions model =
+    Sub.batch <|
+        (jsToElm (ReceiveFromJs << decodeDataFromJs))
+            :: (if Dict.isEmpty model.pending then
+                    []
+                else
+                    [ Time.every Time.second CollectGarbage ]
+               )
 
 
 init : ( Model, Cmd Msg )
 init =
-    ( DummyModel, Cmd.none )
+    ( { pending = Dict.empty }
+    , Cmd.none
+    )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        ConnectionReceived value ->
-            case JD.decodeValue decodeConnection value of
-                Ok conn ->
-                    ( model, registerUserStep1 conn )
+        ReceiveFromJs (NewConnection conn) ->
+            let
+                ( maybePending, cmd ) =
+                    registerUserStep1 conn
+            in
+                case maybePending of
+                    Just ( connection, continuation ) ->
+                        ( { model
+                            | pending =
+                                Dict.insert
+                                    connection.id
+                                    ( connection, continuation )
+                                    model.pending
+                          }
+                        , cmd
+                        )
 
-                Err e ->
-                    Debug.log
-                        ("Impossible condition reached. JS/Elm interface is completely broken!\n" ++ e)
+                    Nothing ->
+                        ( model, cmd )
+
+        ReceiveFromJs (JsActionResult connId jsValue) ->
+            case Dict.get connId model.pending of
+                Just ( connection, continueWith ) ->
+                    ( { model | pending = Dict.remove connId model.pending }
+                    , continueWith connection jsValue
+                    )
+
+                Nothing ->
+                    Debug.log ("Pending connection not found:\n" ++ toString connId)
                         ( model, Cmd.none )
 
-        EffectListInt cmdFromIntList intList ->
-            Debug.log ("EffectListInt") <|
-                ( model, cmdFromIntList intList )
+        ReceiveFromJs (InboundPortError str) ->
+            ( model, Cmd.none )
 
-        SendResponse response ->
-            ( model, sendResponseCmd response )
+        SendToJs RespondToClient ->
+            ( model, Cmd.none )
 
+        SendToJs (HashPassword password) ->
+            ( model, Cmd.none )
 
-sendResponseCmd : Response -> Cmd msg
-sendResponseCmd =
-    elmToJs << encodeResponse
+        CollectGarbage now ->
+            let
+                predicate ( timestamp, seq ) val =
+                    now - timestamp > Time.second
+
+                ( keep, dump ) =
+                    Dict.partition predicate model.pending
+
+                _ =
+                    -- Need to keep whole connection in the dict, and reply properly
+                    -- foldl it into a list of commands
+                    if not (Dict.isEmpty dump) then
+                        Debug.log "Dumping " dump
+                    else
+                        dump
+            in
+                ( { pending = keep }, Cmd.none )
+
+        ExecuteCmd cmd ->
+            ( model, cmd )
 
 
 type alias RegistrationFormDetails =
@@ -78,19 +173,15 @@ decodeCreateUserInputData =
                 (JD.field "password" JD.string)
 
 
-createUser : RegistrationFormDetails -> List Int -> User
-createUser input saltBytes =
-    let
-        hexHashAndSalt =
-            hashPassword input.password saltBytes
-    in
-        { username = input.username
-        , email = input.email
-        , bio = ""
-        , image = ""
-        , hash = hexHashAndSalt.hash
-        , salt = hexHashAndSalt.salt
-        }
+createUser : RegistrationFormDetails -> HashAndSalt -> User
+createUser formDetails hashAndSalt =
+    { username = formDetails.username
+    , email = formDetails.email
+    , bio = ""
+    , image = ""
+    , hash = hashAndSalt.hash
+    , salt = hashAndSalt.salt
+    }
 
 
 
@@ -119,8 +210,8 @@ dbUrl =
     "http://127.0.0.1:5984/conduit"
 
 
-dbCreateDoc : JE.Value -> Http.Request DbCreateDocResponse
-dbCreateDoc json =
+createDbDoc : JE.Value -> Http.Request DbCreateDocResponse
+createDbDoc json =
     let
         body =
             Http.jsonBody json
@@ -135,7 +226,7 @@ dbCreateDoc json =
         Http.post dbUrl body responseDecoder
 
 
-registerUserStep1 : Connection -> Cmd Msg
+registerUserStep1 : Connection -> ( Maybe ( Connection, Continuation ), Cmd Msg )
 registerUserStep1 conn =
     let
         inputResult =
@@ -146,49 +237,83 @@ registerUserStep1 conn =
     in
         case inputResult of
             Err str ->
-                sendResponseCmd <|
-                    Connection.errorResponse
-                        Connection.BadRequest
-                        conn.response
+                ( Nothing
+                , jsActionCmd RespondToClient
+                    { conn
+                        | response =
+                            Connection.errorResponse
+                                Connection.BadRequest
+                                conn.response
+                    }
+                )
 
             Ok regFormData ->
-                let
-                    effectCallbackClosure saltBytes =
-                        EffectListInt
-                            (registerUserStep2 conn regFormData)
-                            saltBytes
-                in
-                    Models.User.getRandomSaltBytes 512 effectCallbackClosure
+                ( Just
+                    ( conn
+                    , registerUserStep2 regFormData
+                    )
+                , jsActionCmd (HashPassword regFormData.user.password) conn
+                )
 
 
-registerUserStep2 : Connection -> RegistrationForm -> List Int -> Cmd Msg
-registerUserStep2 conn regFormData saltBytes =
+type alias HashAndSalt =
+    { hash : String
+    , salt : String
+    }
+
+
+decodeHashAndSalt =
+    JD.map2 HashAndSalt
+        (JD.field "hash" JD.string)
+        (JD.field "salt" JD.string)
+
+
+registerUserStep2 : RegistrationForm -> Connection -> JD.Value -> Cmd Msg
+registerUserStep2 regFormData conn jsHashAndSalt =
+    case JD.decodeValue decodeHashAndSalt jsHashAndSalt of
+        Ok hashAndSalt ->
+            registerUserStep3 regFormData conn hashAndSalt
+
+        Err e ->
+            jsActionCmd RespondToClient
+                { conn
+                    | response = errorResponse InternalError conn.response
+                }
+
+
+registerUserStep3 : RegistrationForm -> Connection -> HashAndSalt -> Cmd Msg
+registerUserStep3 regFormData conn hashAndSalt =
     let
         user =
             Debug.log "step 2, creating user" <|
                 createUser
                     regFormData.user
-                    (Debug.log "step 2, receiving saltBytes" saltBytes)
-
-        dbRequest =
-            dbCreateDoc <| toDatabaseJSON user
+                    (Debug.log "step 2, receiving salt" hashAndSalt)
 
         dbTask =
-            Http.toTask dbRequest
+            user
+                |> toDatabaseJSON
+                |> createDbDoc
+                |> Http.toTask
 
         successBody =
             JE.encode 0 <| toAuthJSON user
 
+        handleDbResult : Result Http.Error DbCreateDocResponse -> Msg
         handleDbResult dbResult =
-            SendResponse <|
-                case dbResult of
-                    Ok _ ->
-                        successResponse
-                            (Debug.log "step 2, creating response" successBody)
-                            conn.response
+            ExecuteCmd <|
+                jsActionCmd RespondToClient <|
+                    { conn
+                        | response =
+                            case dbResult of
+                                Ok _ ->
+                                    successResponse
+                                        (Debug.log "step 2, creating response" successBody)
+                                        conn.response
 
-                    Err httpError ->
-                        handleDbError conn.response httpError
+                                Err httpError ->
+                                    handleDbError conn.response httpError
+                    }
     in
         Task.attempt handleDbResult dbTask
 

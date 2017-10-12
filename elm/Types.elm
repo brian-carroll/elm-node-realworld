@@ -1,27 +1,55 @@
 module Types exposing (..)
 
-import Json.Decode as JS
+import Json.Decode as JD
 import Dict exposing (Dict)
+import Time exposing (Time)
 
 
-type Model
-    = DummyModel
+type alias ConnectionId =
+    ( Time, Int )
+
+
+type alias JsInterface =
+    { connectionId : ConnectionId
+    , tag : String
+    , payload : JD.Value
+    }
+
+
+type OutboundPortAction
+    = RespondToClient
+    | HashPassword String
+
+
+type InboundPortData
+    = NewConnection Connection
+    | JsActionResult ConnectionId JD.Value
+    | InboundPortError String
+
+
+{-| A continuation function. Pick up where we left off after getting a value back from JS
+-}
+type alias Continuation =
+    Connection -> JD.Value -> Cmd Msg
+
+
+type alias Model =
+    { pending :
+        Dict ConnectionId ( Connection, Continuation )
+    }
 
 
 type Msg
-    = ConnectionReceived JS.Value
-    | EffectListInt (List Int -> Cmd Msg) (List Int)
-    | SendResponse Response
-
-
-type PipelineEffect
-    = Execute Cmd
-    | Respond Response
+    = ReceiveFromJs InboundPortData
+    | SendToJs OutboundPortAction
+    | CollectGarbage Time
+    | ExecuteCmd (Cmd Msg)
 
 
 type alias Connection =
     { request : Request
     , response : Response
+    , id : ConnectionId
     }
 
 
@@ -34,7 +62,7 @@ type alias Request =
 
 
 type alias Response =
-    { nodeResponseObject : JS.Value
+    { nodeResponseObject : JD.Value
     , statusCode : Int
     , headers : Dict String String
     , body : String

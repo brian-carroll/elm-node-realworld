@@ -109,3 +109,77 @@ stage2 : Conn -> a -> (Conn, Cmd )
 dummyCmd : (a -> Msg) -> a -> Cmd Msg
 dummyCmd msg payload =
   Task.perform msg (Task.succeed payload)
+
+## Next steps
+- pipeline stage output type, ideas
+```elm
+    (
+        -- base type fields
+        { request : Request
+        , response : Response
+        , timestamp : Time
+        , randomSeed : Random.Seed
+        , route : Route
+
+        -- optional stuff added by middleware
+        , user : User
+        , auth : LoggedIn | Guest
+        
+        -- idea
+        , effects : ToRun (Cmd msg) | Return Json.Decode.Value
+        }
+    , Cmd Msg
+    )
+```
+
+## Nice JS interop
+- Only actually need it for registration
+    - Out of all the 12 endpoints, just one needs to go out to JS for effects
+    - Basically it's all about the DB
+
+### Pass all data to JS, remember nothing in Elm
+- We can't give it a callback, and we can't compare JS.Value's
+- Elm will have to re-decode the connection at the gate, and route it to a 'step 2' of the endpoint
+
+### Remember stuff in Elm state, waiting for JS to get back.
+- We can remember functions, not just values
+- Allows a Monadic composable version
+- Need a Connection ID as Dict key
+    - Could use an `(Int, Int)` key, built from timestamp and a counter in Node
+    - These could be separate fields in the Connection, just assemble into a Tuple for storage
+- Avoid leaks if JS blows up
+    - Expiration time?
+    - Garbage collection cycle triggered from time subscription?
+    - setTimeout, then delete from Dict & **auto-respond with a HTTP timeout status!!**
+    - implementation details
+        - Elm can only do setInterval, but it can also check the model and unsubscribe if it wants
+        - Dict => all values have to have exact same concrete type
+        - BUT could work around that using closures
+        - The type we want to store is `Json.Decode.Value -> JsOperation`
+        - We always want another JS operation. It can be either effect or response
+        - Produce these closures using `runJsAndThen`, which builds them from `Plugs`
+
+### What would a nice API look like?
+- best would be some kind of `doEffectAndThen` or `runJsAndThen`
+    - how would I like to write this?
+        ```elm
+        collectUnderpants : Connection stuff0 -> (Connection stuff1, Cmd)
+        profit : Connection stuff1 -> effectData -> Connection stuff2
+
+        endpoint =
+            collectUnderpants
+            |> runCommandAndThen profit
+        ```
+    - or possibly
+        ```elm
+        type JsOperation
+            = Respond Response
+            | HashPassword String
+
+        collectUnderpants : Connection stuff0 -> (Connection stuff1, JsOperation)
+        profit : Connection stuff1 -> Json.Decode.Value -> Connection stuff2
+
+        endpoint =
+            collectUnderpants
+            |> runJsAndThen profit
+        ```
