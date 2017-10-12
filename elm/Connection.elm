@@ -13,12 +13,12 @@ import Dict exposing (Dict)
 import Types exposing (..)
 
 
-decodeConnection : JD.Decoder Connection
-decodeConnection =
+decodeConnection : ConnectionId -> JD.Decoder Connection
+decodeConnection connectionId =
     JD.map3 Connection
         (JD.field "request" decodeRequest)
         (JD.field "response" decodeResponse)
-        (JD.succeed ( 0, 0 ))
+        (JD.succeed connectionId)
 
 
 decodeRequest : JD.Decoder Request
@@ -63,7 +63,7 @@ decodeMethod =
                         JD.succeed Delete
 
                     _ ->
-                        JD.fail ("Method")
+                        JD.fail "Method"
             )
 
 

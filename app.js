@@ -8,6 +8,8 @@ const hostname = '127.0.0.1';
 const port = 8000;
 const elmApp = Elm.Main.worker();
 
+elmApp.ports.elmToJs.subscribe(handleActionsFromElm);
+
 const sendToElm = x => {
   console.log('sendToElm', x.tag);
   elmApp.ports.jsToElm.send(x);
@@ -44,10 +46,10 @@ const hashPassword = plainText =>
       })
   );
 
-const handleActionsFromElm = elmData => {
+function handleActionsFromElm(elmData) {
   console.log('handleActionsFromElm', elmData.tag);
   switch (elmData.tag) {
-    case 'Respond':
+    case 'RespondToClient':
       respondToClient(elmData.payload);
       break;
 
@@ -79,7 +81,7 @@ const handleActionsFromElm = elmData => {
       });
       break;
   }
-};
+}
 
 // Application-level state to guarantee unique connection ID's
 let sequenceNo = 0;

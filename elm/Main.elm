@@ -23,7 +23,7 @@ decodeDataFromJs jsData =
         decoder =
             case jsData.tag of
                 "NewConnection" ->
-                    JD.map NewConnection decodeConnection
+                    JD.map NewConnection (decodeConnection jsData.connectionId)
 
                 "JsActionResult" ->
                     JD.map2 JsActionResult
@@ -48,7 +48,7 @@ jsActionCmd : OutboundPortAction -> Connection -> Cmd Msg
 jsActionCmd elmData conn =
     elmToJs
         { connectionId = conn.id
-        , tag = toString elmData |> String.words |> List.head |> Maybe.withDefault "Unknown"
+        , tag = toString elmData |> String.words |> List.head |> Maybe.withDefault ""
         , payload =
             case elmData of
                 RespondToClient ->
@@ -141,7 +141,8 @@ update msg model =
                     -- Need to keep whole connection in the dict, and reply properly
                     -- foldl it into a list of commands
                     if not (Dict.isEmpty dump) then
-                        Debug.log "Dumping " dump
+                        Debug.log "Collecting garbage. Dumping..."
+                            dump
                     else
                         dump
             in
@@ -262,6 +263,7 @@ type alias HashAndSalt =
     }
 
 
+decodeHashAndSalt : JD.Decoder HashAndSalt
 decodeHashAndSalt =
     JD.map2 HashAndSalt
         (JD.field "hash" JD.string)
@@ -285,10 +287,12 @@ registerUserStep3 : RegistrationForm -> Connection -> HashAndSalt -> Cmd Msg
 registerUserStep3 regFormData conn hashAndSalt =
     let
         user =
-            Debug.log "step 2, creating user" <|
+            Debug.log "step 3, creating user datastructure" <|
                 createUser
                     regFormData.user
-                    (Debug.log "step 2, receiving salt" hashAndSalt)
+                    (Debug.log "step 3, receiving hash & salt"
+                        hashAndSalt
+                    )
 
         dbTask =
             user
@@ -308,11 +312,16 @@ registerUserStep3 regFormData conn hashAndSalt =
                             case dbResult of
                                 Ok _ ->
                                     successResponse
-                                        (Debug.log "step 2, creating response" successBody)
+                                        (Debug.log "DB doc created, creating response"
+                                            successBody
+                                        )
                                         conn.response
 
                                 Err httpError ->
-                                    handleDbError conn.response httpError
+                                    handleDbError conn.response
+                                        (Debug.log "DB doc creation failed, creating error response"
+                                            httpError
+                                        )
                     }
     in
         Task.attempt handleDbResult dbTask
@@ -333,13 +342,17 @@ handleDbError response httpError =
         Http.BadStatus httpResponse ->
             { response
                 | statusCode = httpResponse.status.code
-                , body = Debug.log "DB BadStatus" httpResponse.body
+                , body =
+                    -- Debug.log "DB BadStatus"
+                    httpResponse.body
             }
 
         Http.BadPayload jsonDecoderString httpResponse ->
             { response
                 | statusCode = 500
-                , body = Debug.log ("DB BadPayload\n" ++ jsonDecoderString ++ "\n") httpResponse.body
+                , body =
+                    -- Debug.log ("DB BadPayload\n" ++ jsonDecoderString ++ "\n")
+                    httpResponse.body
             }
 
 

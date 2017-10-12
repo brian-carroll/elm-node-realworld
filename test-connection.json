@@ -1,0 +1,13 @@
+{
+    "request": {
+        "method": "GET",
+        "url": "/things/stuff/123",
+        "headers": {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+        },
+        "body": "{}"
+    },
+    "response": "whatever",
+    "connectionId": [1234567890, 0]
+}
