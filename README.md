@@ -183,3 +183,30 @@ dummyCmd msg payload =
             collectUnderpants
             |> runJsAndThen profit
         ```
+
+## Error handling
+- As part of the pipeline mechanism we need to handle error responses
+- Again, Monads FTW
+- A pipeline should be a chain of stuff with occasional `catch` clauses that do 500's or whatever
+- Write out pipelines for each endpoint, how I'd like it to look
+- Then make it happen
+- Also do JWT as it's the final building block
+- Write a blog post!
+
+## Next up
+- JWT
+    - Pass in secret from Linux env
+- Working auth
+    - Don't duplicate user on re-reg
+    - Login
+    - Logout
+- Routing for the 3 endpoints
+- Ideal code for each endpoint
+- Make ideal code happen
+    - Types
+        - PipelineStage
+        - Connection
+    - Glue
+        - runEffectAndThen
+        - runJsAndThen
+        - catchErrors

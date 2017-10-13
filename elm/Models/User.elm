@@ -3,21 +3,14 @@ module Models.User exposing (..)
 import Json.Decode as JD exposing (Decoder)
 import Json.Encode as JE
 import Regex exposing (regex)
-import Word.Bytes as Bytes
-import Word.Hex as Hex
-import Crypto.HMAC as HMAC
-import Bitwise
-import Random
-
-
-config =
-    { passwordHashIterations = 100
-    , passwordHashBytes = 512
-    }
+import Types exposing (..)
+import JsonWebToken as JWT
+import Time
 
 
 type alias User =
-    { username : Username
+    { id : Maybe String
+    , username : Username
     , email : Email
     , bio : String
     , image : String
@@ -66,7 +59,8 @@ decodeEmail =
 
 decodeUser : Decoder User
 decodeUser =
-    JD.map6 User
+    JD.map7 User
+        (JD.maybe (JD.field "id" JD.string))
         (JD.field "username" decodeUsername)
         (JD.field "email" decodeEmail)
         (JD.field "bio" JD.string)
@@ -102,15 +96,21 @@ toDatabaseJSON user =
         ]
 
 
-toAuthJSON : User -> JE.Value
-toAuthJSON user =
-    JE.object
-        [ ( "username", encodeUsername user.username )
-        , ( "email", encodeEmail user.email )
-        , ( "bio", JE.string user.bio )
-        , ( "image", JE.string user.image )
-        , ( "token", JE.string <| generateJWT user )
-        ]
+toAuthJSON : Secret -> Time.Time -> User -> Maybe JE.Value
+toAuthJSON secret now user =
+    case generateJWT secret now user of
+        Nothing ->
+            Nothing
+
+        Just token ->
+            Just <|
+                JE.object
+                    [ ( "username", (encodeUsername user.username) )
+                    , ( "email", encodeEmail user.email )
+                    , ( "bio", JE.string user.bio )
+                    , ( "image", JE.string user.image )
+                    , ( "token", JE.string token )
+                    ]
 
 
 toProfileJSONFor : User -> User -> JE.Value
@@ -123,73 +123,40 @@ toProfileJSONFor viewingUser profileUser =
         ]
 
 
-generateJWT : User -> String
-generateJWT user =
-    -- TODO: make this actually generate a JWT
-    -- Needs to go and get current date
-    user.hash
-
-
-getRandomSaltBytes : Int -> (List Int -> msg) -> Cmd msg
-getRandomSaltBytes length msgConstructor =
-    Random.generate msgConstructor <|
-        Random.list length (Random.int 0 255)
-
-
-hashPassword : String -> List Int -> { hash : String, salt : String }
-hashPassword plainText saltBytes =
-    { hash =
-        pbkdf2
-            plainText
-            saltBytes
-            config.passwordHashIterations
-            config.passwordHashBytes
-            HMAC.sha512
-    , salt = Hex.fromByteList saltBytes
+type alias JwtPayload =
+    { id : String
+    , username : String
+    , exp : Int
     }
 
 
-pbkdf2 : String -> List Int -> Int -> Int -> HMAC.Hash -> String
-pbkdf2 password saltBytes iterations keylen algo =
-    let
-        passwordBytes =
-            Bytes.fromUTF8 password
-
-        initialHash =
-            HMAC.digestBytes algo passwordBytes saltBytes
-
-        resultBytes =
-            pbkdf2Loop algo passwordBytes initialHash initialHash iterations
-    in
-        Hex.fromByteList resultBytes
+payloadEncoder : JwtPayload -> JE.Value
+payloadEncoder payload =
+    JE.object
+        [ ( "id", JE.string payload.id )
+        , ( "username", JE.string payload.username )
+        , ( "exp", JE.int payload.exp )
+        ]
 
 
-pbkdf2Loop : HMAC.Hash -> List Int -> List Int -> List Int -> Int -> List Int
-pbkdf2Loop algo password hash result iterations =
-    if iterations == 0 then
-        result
-    else
-        let
-            nextHash =
-                HMAC.digestBytes algo password hash
+generateJWT : Secret -> Time.Time -> User -> Maybe String
+generateJWT secret now user =
+    case ( user.username, user.id ) of
+        ( Username usernameStr, Just idStr ) ->
+            Just <|
+                JWT.encode
+                    JWT.hmacSha256
+                    payloadEncoder
+                    secret
+                    { id = idStr
+                    , username = usernameStr
+                    , exp = round ((now + (Time.hour * 24 * 14)) / 1000.0)
+                    }
 
-            nextResult =
-                List.map2 Bitwise.xor result nextHash
-        in
-            pbkdf2Loop algo password nextHash nextResult (iterations - 1)
+        ( _, Nothing ) ->
+            Nothing
 
 
-{-| loop lots of times, reapplying hmac
-
-hash = hmac(password, salt)
-result = hash
-for (i = 0; i < iter_count; i++) {
-hash = hmac(password, hash)
-result = xor(result, hash)
-}
-return result
-
--}
 setPassword : User -> User
 setPassword user =
     { user

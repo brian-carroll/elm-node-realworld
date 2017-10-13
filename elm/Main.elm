@@ -8,7 +8,7 @@ import Types exposing (..)
 import Http
 import Task exposing (Task)
 import Dict
-import Time
+import Time exposing (Time)
 
 
 port elmToJs : JsInterface -> Cmd msg
@@ -59,9 +59,9 @@ jsActionCmd elmData conn =
         }
 
 
-main : Program Never Model Msg
+main : Program ProgramConfig Model Msg
 main =
-    Platform.program
+    Platform.programWithFlags
         { init = init
         , update = update
         , subscriptions = subscriptions
@@ -79,9 +79,11 @@ subscriptions model =
                )
 
 
-init : ( Model, Cmd Msg )
-init =
-    ( { pending = Dict.empty }
+init : ProgramConfig -> ( Model, Cmd Msg )
+init config =
+    ( { config = config
+      , pending = Dict.empty
+      }
     , Cmd.none
     )
 
@@ -92,7 +94,7 @@ update msg model =
         ReceiveFromJs (NewConnection conn) ->
             let
                 ( maybePending, cmd ) =
-                    registerUserStep1 conn
+                    registerUserStep1 model.config.secret conn
             in
                 case maybePending of
                     Just ( connection, continuation ) ->
@@ -146,7 +148,7 @@ update msg model =
                     else
                         dump
             in
-                ( { pending = keep }, Cmd.none )
+                ( { model | pending = keep }, Cmd.none )
 
         ExecuteCmd cmd ->
             ( model, cmd )
@@ -176,17 +178,14 @@ decodeCreateUserInputData =
 
 createUser : RegistrationFormDetails -> HashAndSalt -> User
 createUser formDetails hashAndSalt =
-    { username = formDetails.username
+    { id = Nothing
+    , username = formDetails.username
     , email = formDetails.email
     , bio = ""
     , image = ""
     , hash = hashAndSalt.hash
     , salt = hashAndSalt.salt
     }
-
-
-
--- toDatabaseJSON
 
 
 type alias DbCreateDocResponse =
@@ -227,8 +226,8 @@ createDbDoc json =
         Http.post dbUrl body responseDecoder
 
 
-registerUserStep1 : Connection -> ( Maybe ( Connection, Continuation ), Cmd Msg )
-registerUserStep1 conn =
+registerUserStep1 : Secret -> Connection -> ( Maybe ( Connection, Continuation ), Cmd Msg )
+registerUserStep1 secret conn =
     let
         inputResult =
             Debug.log "step 1, decoding input JSON" <|
@@ -251,7 +250,7 @@ registerUserStep1 conn =
             Ok regFormData ->
                 ( Just
                     ( conn
-                    , registerUserStep2 regFormData
+                    , registerUserStep2 secret regFormData
                     )
                 , jsActionCmd (HashPassword regFormData.user.password) conn
                 )
@@ -270,11 +269,11 @@ decodeHashAndSalt =
         (JD.field "salt" JD.string)
 
 
-registerUserStep2 : RegistrationForm -> Connection -> JD.Value -> Cmd Msg
-registerUserStep2 regFormData conn jsHashAndSalt =
+registerUserStep2 : Secret -> RegistrationForm -> Connection -> JD.Value -> Cmd Msg
+registerUserStep2 secret regFormData conn jsHashAndSalt =
     case JD.decodeValue decodeHashAndSalt jsHashAndSalt of
         Ok hashAndSalt ->
-            registerUserStep3 regFormData conn hashAndSalt
+            registerUserStep3 secret regFormData conn hashAndSalt
 
         Err e ->
             jsActionCmd RespondToClient
@@ -283,8 +282,8 @@ registerUserStep2 regFormData conn jsHashAndSalt =
                 }
 
 
-registerUserStep3 : RegistrationForm -> Connection -> HashAndSalt -> Cmd Msg
-registerUserStep3 regFormData conn hashAndSalt =
+registerUserStep3 : Secret -> RegistrationForm -> Connection -> HashAndSalt -> Cmd Msg
+registerUserStep3 secret regFormData conn hashAndSalt =
     let
         user =
             Debug.log "step 3, creating user datastructure" <|
@@ -299,32 +298,41 @@ registerUserStep3 regFormData conn hashAndSalt =
                 |> toDatabaseJSON
                 |> createDbDoc
                 |> Http.toTask
-
-        successBody =
-            JE.encode 0 <| toAuthJSON user
-
-        handleDbResult : Result Http.Error DbCreateDocResponse -> Msg
-        handleDbResult dbResult =
-            ExecuteCmd <|
-                jsActionCmd RespondToClient <|
-                    { conn
-                        | response =
-                            case dbResult of
-                                Ok _ ->
-                                    successResponse
-                                        (Debug.log "DB doc created, creating response"
-                                            successBody
-                                        )
-                                        conn.response
-
-                                Err httpError ->
-                                    handleDbError conn.response
-                                        (Debug.log "DB doc creation failed, creating error response"
-                                            httpError
-                                        )
-                    }
     in
-        Task.attempt handleDbResult dbTask
+        Task.attempt
+            (handleDbResult secret user conn)
+            dbTask
+
+
+handleDbResult : Secret -> User -> Connection -> Result Http.Error DbCreateDocResponse -> Msg
+handleDbResult secret user conn dbResult =
+    let
+        now =
+            Tuple.first conn.id
+
+        response =
+            case dbResult of
+                Ok dbResponse ->
+                    case toAuthJSON secret now { user | id = Just dbResponse.id } of
+                        Just json ->
+                            successResponse
+                                (JE.encode 0 json)
+                                conn.response
+
+                        Nothing ->
+                            errorResponse
+                                Connection.InternalError
+                                conn.response
+
+                Err httpError ->
+                    handleDbError conn.response
+                        httpError
+    in
+        ExecuteCmd <|
+            jsActionCmd RespondToClient <|
+                { conn
+                    | response = response
+                }
 
 
 handleDbError : Response -> Http.Error -> Response

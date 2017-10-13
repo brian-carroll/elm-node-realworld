@@ -1,20 +1,33 @@
-global.XMLHttpRequest = require('./xhr-elm'); // Must require before Elm
-
+//-----------------------------------------------
+// Imports
+//-----------------------------------------------
+global.XMLHttpRequest = require('./xhr-elm'); // Polyfill for elm-lang/http
 const http = require('http');
 const crypto = require('crypto');
 const Elm = require('./elm');
 
+//-----------------------------------------------
+// Config
+//-----------------------------------------------
 const hostname = '127.0.0.1';
 const port = 8000;
-const elmApp = Elm.Main.worker();
+const secret =
+  process.env.NODE_ENV === 'production' ? process.env.SECRET : 'secret';
 
+//-----------------------------------------------
+// Elm setup
+//-----------------------------------------------
+const elmFlags = { secret };
+const elmApp = Elm.Main.worker(elmFlags);
 elmApp.ports.elmToJs.subscribe(handleActionsFromElm);
-
 const sendToElm = x => {
   console.log('sendToElm', x.tag);
   elmApp.ports.jsToElm.send(x);
 };
 
+//-----------------------------------------------
+// JS-Elm interop
+//-----------------------------------------------
 const respondToClient = ({ nodeResponseObject, statusCode, headers, body }) => {
   nodeResponseObject.writeHead(statusCode, headers);
   nodeResponseObject.end(body);
@@ -83,6 +96,10 @@ function handleActionsFromElm(elmData) {
   }
 }
 
+//-----------------------------------------------
+// Connection handler
+//-----------------------------------------------
+
 // Application-level state to guarantee unique connection ID's
 let sequenceNo = 0;
 let previousTimestamp = 0;
@@ -116,12 +133,18 @@ const handleNewConnection = (request, response) => {
     });
 };
 
+//-----------------------------------------------
+// Node server
+//-----------------------------------------------
 const server = http.createServer(handleNewConnection);
 
 server.listen(port, hostname, () => {
   console.log(`Server running at http://${hostname}:${port}/`);
 });
 
+//-----------------------------------------------
+// Exports for testing
+//-----------------------------------------------
 module.exports = {
   hashPassword,
   server,

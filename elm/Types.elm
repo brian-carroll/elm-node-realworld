@@ -33,8 +33,17 @@ type alias Continuation =
     Connection -> JD.Value -> Cmd Msg
 
 
+type alias Secret =
+    String
+
+
+type alias ProgramConfig =
+    { secret : Secret }
+
+
 type alias Model =
-    { pending :
+    { config : ProgramConfig
+    , pending :
         Dict ConnectionId ( Connection, Continuation )
     }
 
