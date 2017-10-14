@@ -3,6 +3,7 @@ module Types exposing (..)
 import Json.Decode as JD
 import Dict exposing (Dict)
 import Time exposing (Time)
+import Task exposing (Task)
 
 
 type alias ConnectionId =
@@ -25,12 +26,6 @@ type InboundPortData
     = NewConnection Connection
     | JsActionResult ConnectionId JD.Value
     | InboundPortError String
-
-
-{-| A continuation function. Pick up where we left off after getting a value back from JS
--}
-type alias Continuation =
-    Connection -> JD.Value -> Cmd Msg
 
 
 type alias Secret =
@@ -62,6 +57,16 @@ type alias Connection =
     }
 
 
+type HttpStatus
+    = HttpOk
+    | BadRequest
+    | NotFound
+    | MethodNotAllowed
+    | RequestTimeout
+    | InternalError
+    | ServiceUnavailable
+
+
 type alias Request =
     { method : Method
     , url : String
@@ -85,16 +90,19 @@ type Method
     | Delete
 
 
-type Route
-    = Tags
-    | Profiles String
-    | ProfilesFollow String
-    | Articles
-    | ArticlesFeed
-    | ArticleSingle String
-    | ArticleFavourite String
-    | ArticleComments String
-    | ArticleCommentsDelete String String
-    | Users
-    | UsersLogin
-    | User
+type HandlerState
+    = Success JD.Value
+    | Error HttpStatus String
+    | AwaitingPort OutboundPortAction Continuation
+    | AwaitingTask (Task Never HandlerState)
+
+
+
+-- type alias Continuation =
+--     Connection -> JD.Value -> HandlerState
+
+
+{-| A continuation function. Pick up where we left off after getting a value back from JS
+-}
+type alias Continuation =
+    Connection -> JD.Value -> Cmd Msg

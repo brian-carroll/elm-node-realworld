@@ -1,7 +1,6 @@
 module Connection
     exposing
-        ( HttpStatus(..)
-        , decodeConnection
+        ( decodeConnection
         , errorResponse
         , successResponse
         , encodeResponse
@@ -100,16 +99,6 @@ defaultHeaders =
         [ ( "Content-Type", "application/json" )
         , ( "Accept", "application/json" )
         ]
-
-
-type HttpStatus
-    = HttpOk
-    | BadRequest
-    | NotFound
-    | MethodNotAllowed
-    | RequestTimeout
-    | InternalError
-    | ServiceUnavailable
 
 
 mapHttpStatus : HttpStatus -> ( Int, String )

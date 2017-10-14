@@ -2,7 +2,7 @@ port module Main exposing (main)
 
 import Json.Decode as JD
 import Json.Encode as JE
-import Connection exposing (..)
+import Connection exposing (decodeConnection, errorResponse, successResponse, encodeResponse)
 import Models.User exposing (..)
 import Types exposing (..)
 import Http
@@ -242,7 +242,7 @@ registerUserStep1 secret conn =
                     { conn
                         | response =
                             Connection.errorResponse
-                                Connection.BadRequest
+                                Types.BadRequest
                                 conn.response
                     }
                 )
@@ -300,12 +300,12 @@ registerUserStep3 secret regFormData conn hashAndSalt =
                 |> Http.toTask
     in
         Task.attempt
-            (handleDbResult secret user conn)
+            (registerUserStep4 secret user conn)
             dbTask
 
 
-handleDbResult : Secret -> User -> Connection -> Result Http.Error DbCreateDocResponse -> Msg
-handleDbResult secret user conn dbResult =
+registerUserStep4 : Secret -> User -> Connection -> Result Http.Error DbCreateDocResponse -> Msg
+registerUserStep4 secret user conn dbResult =
     let
         now =
             Tuple.first conn.id
@@ -321,7 +321,7 @@ handleDbResult secret user conn dbResult =
 
                         Nothing ->
                             errorResponse
-                                Connection.InternalError
+                                InternalError
                                 conn.response
 
                 Err httpError ->
@@ -339,13 +339,13 @@ handleDbError : Response -> Http.Error -> Response
 handleDbError response httpError =
     case httpError of
         Http.BadUrl url ->
-            errorResponse Connection.NotFound response
+            errorResponse NotFound response
 
         Http.Timeout ->
-            errorResponse Connection.RequestTimeout response
+            errorResponse RequestTimeout response
 
         Http.NetworkError ->
-            errorResponse Connection.RequestTimeout response
+            errorResponse RequestTimeout response
 
         Http.BadStatus httpResponse ->
             { response

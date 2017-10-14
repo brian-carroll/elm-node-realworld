@@ -210,3 +210,73 @@ dummyCmd msg payload =
         - runEffectAndThen
         - runJsAndThen
         - catchErrors
+
+## Circular import issue
+- Main
+    - Framework.Connection
+        - wants a route parser to decode Request & Connection
+        - best to pass in a route parser as a parameter.
+            - import up to top level, then pass down to framework
+        - there's going to be a `route` type parameter on Request and Connection for this
+    - App.Routes
+        - Needs errorResponse, successResponse, etc.
+        - really want to import this stuff directly as part of framework rather than dependency injection
+- I'm going to get distracted by "What's in the framework and what's in the app"?
+    - Put this off for a while!
+    - Thinking about it a bit can help to clarify things though
+- For now, break the route parser into a file on its own
+- It's only the individual routes that really need the reponse functions... I think
+- Do I want to distribute the route parsing down the hierarchy, as we go, or have it central?
+    - There are frameworks that take each approach
+        - Express and Flask do it hierarchically
+        - I think Django has a central file defining all routes
+
+
+
+## What to return from routes
+- Cmds not great, type is too vague
+- Instead, return a union type of possible actions
+- Get rid of the Maybe and use something better
+
+```elm
+HandlerOutput
+    = Success JD.Value
+    | Error ErrorType String
+    | JsAction OutboundPortAction Continuation
+    | ElmTask (Task Never HandlerOutput)
+
+```
+
+This suggests some top-level engine that is running the endpoint.
+`HandlerOutput -> Cmd Msg`
+
+`Task.perform` needs a message constructor, so we should have one that takes EndpointOutput. **Using `Task.perform` forces us to handle the error before returning**
+
+## Realisation
+No need to return the connection itself from routes. Top level already has it.
+This idea of transforming the connection through a pipeline... not sure about it anymore.
+The polymorphism is not that convenient in Elm. Types are not really extensible, except for records, but they don't seem that easy to work with.
+Haven't yet seen much stuff that can be plug-and-play for any route.
+And we can always just absorb any info we need to pass in a closure anyway.
+A lot of the pipelining will be with Tasks
+
+
+## Routing idea
+type alias Handler =
+    Connection -> EndpointOutput
+
+Put handlers in a Dict (hashed using toString)
+    EveryDict (Method, AuthLevel) Handler
+**No! Each handler has a different type signature**
+Depends on the url params!
+
+
+## Invalid methods and auth levels
+- Check auth upfront, then using during routing
+- Methods need to be passed the whole way down through the `case`s
+Wait... for methods, I could check in the route parsing as long as different methods
+produce different `Route` constructors.
+Suggests tuples of methods and parsers
+Then what does the top level look like??
+
+Don't get fancy, just get dancy...
