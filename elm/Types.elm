@@ -78,6 +78,7 @@ type HttpStatus
     | NotFound
     | MethodNotAllowed
     | RequestTimeout
+    | Conflict
     | InternalError
     | ServiceUnavailable
 

@@ -5,9 +5,7 @@ import Types exposing (..)
 import Json.Decode as JD
 import Json.Encode as JE
 import Models.User exposing (..)
-import Http
 import Task
-import Time exposing (Time)
 import Database exposing (..)
 import Auth exposing (HashAndSalt, decodeHashAndSalt)
 
@@ -86,7 +84,7 @@ decodeRegistrationForm =
 register : Secret -> Connection -> HandlerState
 register secret conn =
     JD.decodeString decodeRegistrationForm conn.request.body
-        |> catchError BadRequest
+        |> catchError Types.BadRequest
             (\regFormData ->
                 AwaitingPort
                     (HashPassword regFormData.user.password)
@@ -102,7 +100,7 @@ saveNewUser : Secret -> RegistrationForm -> Connection -> HashAndSalt -> Handler
 saveNewUser secret regFormData conn hashAndSalt =
     let
         user =
-            { id = Nothing
+            { rev = Nothing
             , username = regFormData.user.username
             , email = regFormData.user.email
             , bio = ""
@@ -116,20 +114,19 @@ saveNewUser secret regFormData conn hashAndSalt =
 
         dbTask =
             user
-                |> toDatabaseJSON
-                |> createDbDoc
-                |> Http.toTask
-                |> Task.andThen (Task.succeed << handleDbUserCreatedSuccess secret now user)
+                |> Models.User.save
+                |> Task.andThen (Task.succeed << onSaveUserSuccess (toAuthJSON secret now user))
                 |> Task.onError (Task.succeed << handleDbError)
     in
         AwaitingTask dbTask
 
 
-handleDbUserCreatedSuccess : Secret -> Time -> User -> DbCreateDocResponse -> HandlerState
-handleDbUserCreatedSuccess secret now user dbResponse =
-    case toAuthJSON secret now { user | id = Just dbResponse.id } of
-        Just json ->
-            HandlerSuccess json
-
-        Nothing ->
-            HandlerError InternalError "DB user created but has no ID"
+onSaveUserSuccess : JE.Value -> DbPostBulkResponse -> HandlerState
+onSaveUserSuccess successJson dbResponse =
+    if List.all .ok dbResponse then
+        HandlerSuccess successJson
+    else
+        HandlerError InternalError <|
+            """ {"dbErrors": ["""
+                ++ (String.join ", " <| List.filterMap .error dbResponse)
+                ++ """ ]} """

@@ -119,6 +119,9 @@ mapHttpStatus code =
         RequestTimeout ->
             ( 408, "Request Timeout" )
 
+        Conflict ->
+            ( 409, "Conflict" )
+
         InternalError ->
             ( 500, "Internal Error" )
 

@@ -6,10 +6,13 @@ import Regex exposing (regex)
 import Types exposing (..)
 import JsonWebToken as JWT
 import Time
+import Database
+import Http
+import Task exposing (Task)
 
 
 type alias User =
-    { id : Maybe String
+    { rev : Maybe String
     , username : Username
     , email : Email
     , bio : String
@@ -60,8 +63,8 @@ decodeEmail =
 decodeUser : Decoder User
 decodeUser =
     JD.map7 User
-        (JD.maybe (JD.field "id" JD.string))
-        (JD.field "username" decodeUsername)
+        (JD.maybe (JD.field "_rev" JD.string))
+        (JD.field "_id" decodeUsername)
         (JD.field "email" decodeEmail)
         (JD.field "bio" JD.string)
         (JD.field "image" JD.string)
@@ -85,32 +88,59 @@ encodeEmail email =
 
 toDatabaseJSON : User -> JE.Value
 toDatabaseJSON user =
-    JE.object
-        [ ( "type", JE.string "User" )
-        , ( "username", encodeUsername user.username )
-        , ( "email", encodeEmail user.email )
-        , ( "bio", JE.string user.bio )
-        , ( "image", JE.string user.image )
-        , ( "hash", JE.string user.hash )
-        , ( "salt", JE.string user.salt )
-        ]
+    let
+        emailId =
+            case user.email of
+                Email str ->
+                    JE.string <| "email:" ++ str
 
-
-toAuthJSON : Secret -> Time.Time -> User -> Maybe JE.Value
-toAuthJSON secret now user =
-    case generateJWT secret now user of
-        Nothing ->
-            Nothing
-
-        Just token ->
-            Just <|
-                JE.object
-                    [ ( "username", (encodeUsername user.username) )
-                    , ( "email", encodeEmail user.email )
-                    , ( "bio", JE.string user.bio )
-                    , ( "image", JE.string user.image )
-                    , ( "token", JE.string token )
+        userId =
+            case user.username of
+                Username str ->
+                    JE.string <| "user:" ++ str
+    in
+        JE.object
+            [ ( "docs"
+              , JE.list
+                    [ JE.object
+                        [ ( "_id", emailId )
+                        , ( "type", JE.string "Email" )
+                        , ( "user", userId )
+                        ]
+                    , JE.object
+                        [ ( "_id", userId )
+                        , ( "type", JE.string "User" )
+                        , ( "bio", JE.string user.bio )
+                        , ( "image", JE.string user.image )
+                        , ( "hash", JE.string user.hash )
+                        , ( "salt", JE.string user.salt )
+                        ]
                     ]
+              )
+            ]
+
+
+save : User -> Task Http.Error Database.DbPostBulkResponse
+save user =
+    user
+        |> toDatabaseJSON
+        |> Database.postBulkDocs
+        |> Http.toTask
+
+
+toAuthJSON : Secret -> Time.Time -> User -> JE.Value
+toAuthJSON secret now user =
+    let
+        token =
+            generateJWT secret now user
+    in
+        JE.object
+            [ ( "username", (encodeUsername user.username) )
+            , ( "email", encodeEmail user.email )
+            , ( "bio", JE.string user.bio )
+            , ( "image", JE.string user.image )
+            , ( "token", JE.string token )
+            ]
 
 
 toProfileJSONFor : User -> User -> JE.Value
@@ -124,8 +154,7 @@ toProfileJSONFor viewingUser profileUser =
 
 
 type alias JwtPayload =
-    { id : String
-    , username : String
+    { username : String
     , exp : Int
     }
 
@@ -133,28 +162,22 @@ type alias JwtPayload =
 payloadEncoder : JwtPayload -> JE.Value
 payloadEncoder payload =
     JE.object
-        [ ( "id", JE.string payload.id )
-        , ( "username", JE.string payload.username )
+        [ ( "username", JE.string payload.username )
         , ( "exp", JE.int payload.exp )
         ]
 
 
-generateJWT : Secret -> Time.Time -> User -> Maybe String
+generateJWT : Secret -> Time.Time -> User -> String
 generateJWT secret now user =
-    case ( user.username, user.id ) of
-        ( Username usernameStr, Just idStr ) ->
-            Just <|
-                JWT.encode
-                    JWT.hmacSha256
-                    payloadEncoder
-                    secret
-                    { id = idStr
-                    , username = usernameStr
-                    , exp = round ((now + (Time.hour * 24 * 14)) / 1000.0)
-                    }
-
-        ( _, Nothing ) ->
-            Nothing
+    case user.username of
+        Username usernameStr ->
+            JWT.encode
+                JWT.hmacSha256
+                payloadEncoder
+                secret
+                { username = usernameStr
+                , exp = round ((now + Time.hour * 24 * 14) / 1000)
+                }
 
 
 setPassword : User -> User

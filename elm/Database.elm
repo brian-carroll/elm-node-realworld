@@ -1,11 +1,4 @@
-module Database
-    exposing
-        ( createDbDoc
-        , DbError
-        , DbErrorResponse
-        , DbCreateDocResponse
-        , handleDbError
-        )
+module Database exposing (..)
 
 import Http
 import Json.Encode as JE
@@ -51,6 +44,38 @@ createDbDoc json =
         Http.post dbUrl body responseDecoder
 
 
+type alias DbPostBulkResponse =
+    List DbPostBulkResponseItem
+
+
+type alias DbPostBulkResponseItem =
+    { ok : Bool
+    , id : String
+    , rev : String
+    , error : Maybe String
+    , reason : Maybe String
+    }
+
+
+decodeDbPostBulkResponse : JD.Decoder DbPostBulkResponse
+decodeDbPostBulkResponse =
+    JD.list <|
+        JD.map5 DbPostBulkResponseItem
+            (JD.field "ok" JD.bool)
+            (JD.field "id" JD.string)
+            (JD.field "rev" JD.string)
+            (JD.maybe (JD.field "error" JD.string))
+            (JD.maybe (JD.field "reason" JD.string))
+
+
+postBulkDocs : JE.Value -> Http.Request DbPostBulkResponse
+postBulkDocs json =
+    Http.post
+        (dbUrl ++ "/_bulk_docs")
+        (Http.jsonBody json)
+        decodeDbPostBulkResponse
+
+
 handleDbError : Http.Error -> HandlerState
 handleDbError httpError =
     case httpError of
@@ -66,9 +91,15 @@ handleDbError httpError =
         Http.BadStatus httpResponse ->
             HandlerError
                 InternalError
-                ("DB error: " ++ toString httpResponse)
+                (""" {"dbErrors": """
+                    ++ httpResponse.body
+                    ++ "}"
+                )
 
         Http.BadPayload jsonDecoderString httpResponse ->
             HandlerError
-                InternalError
-                ("DB error: " ++ toString httpResponse)
+                Conflict
+                (""" {"dbErrors": """
+                    ++ httpResponse.body
+                    ++ "}"
+                )
