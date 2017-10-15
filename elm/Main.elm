@@ -7,7 +7,7 @@ import Types exposing (..)
 import Task exposing (Task)
 import Dict
 import Time exposing (Time)
-import Routes.Users
+import Routes
 
 
 port elmToJs : JsInterface -> Cmd msg
@@ -98,7 +98,8 @@ updateJsData : State -> JsInterface -> ( PendingHandlers, Cmd Msg )
 updateJsData state jsData =
     case decodeDataFromJs jsData of
         NewConnection conn ->
-            (Routes.Users.registerUser state.config.secret conn)
+            -- TODO: routing
+            (Routes.dispatch state.config conn)
                 |> updateHandlerState conn state.pending
 
         JsActionResult connId jsValue ->
@@ -114,8 +115,11 @@ updateJsData state jsData =
                         ( state.pending, Cmd.none )
 
         InboundPortError str ->
-            -- TODO: do something sensible here. Try to respond to client.
-            ( state.pending, Cmd.none )
+            let
+                _ =
+                    Debug.log "InboundPortError" str
+            in
+                ( state.pending, Cmd.none )
 
 
 decodeDataFromJs : JsInterface -> InboundPortData

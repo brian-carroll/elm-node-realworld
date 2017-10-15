@@ -41,14 +41,32 @@ urlParserUser =
     map CurrentUser top
 
 
-dispatch : Method -> UsersRoute -> Connection -> HandlerState
-dispatch method route conn =
-    case route of
-        Register ->
-            HandlerSuccess JE.null
+dispatch : ProgramConfig -> Connection -> UsersRoute -> HandlerState
+dispatch config conn route =
+    case ( route, conn.request.method ) of
+        ( Register, Post ) ->
+            registerUser config.secret conn
 
         _ ->
             HandlerSuccess JE.null
+
+
+registerUser : Secret -> Connection -> HandlerState
+registerUser secret conn =
+    let
+        inputResult =
+            JD.decodeString
+                decodeCreateUserInputData
+                conn.request.body
+    in
+        case inputResult of
+            Err str ->
+                HandlerError Types.BadRequest str
+
+            Ok regFormData ->
+                AwaitingPort
+                    (HashPassword regFormData.user.password)
+                    (registerUserStep2 secret regFormData)
 
 
 type alias RegistrationFormDetails =
@@ -83,25 +101,6 @@ createUser formDetails hashAndSalt =
     , hash = hashAndSalt.hash
     , salt = hashAndSalt.salt
     }
-
-
-registerUser : Secret -> Connection -> HandlerState
-registerUser secret conn =
-    let
-        inputResult =
-            Debug.log "step 1, decoding input JSON" <|
-                JD.decodeString
-                    decodeCreateUserInputData
-                    conn.request.body
-    in
-        case inputResult of
-            Err str ->
-                HandlerError Types.BadRequest str
-
-            Ok regFormData ->
-                AwaitingPort
-                    (HashPassword regFormData.user.password)
-                    (registerUserStep2 secret regFormData)
 
 
 registerUserStep2 : Secret -> RegistrationForm -> Connection -> JD.Value -> HandlerState

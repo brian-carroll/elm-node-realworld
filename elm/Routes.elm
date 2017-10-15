@@ -1,15 +1,16 @@
 module Routes exposing (..)
 
-import UrlParser exposing (Parser, oneOf, map, s, (</>))
+import UrlParser exposing (Parser, oneOf, map, s, (</>), parseString)
 import Types exposing (..)
-import Routes.Users exposing (urlParserUsers, urlParserUser)
-import Routes.Profiles
-import Routes.Articles
-import Routes.Tags
+import Routes.Users exposing (UsersRoute, urlParserUsers, urlParserUser)
+import Routes.Profiles exposing (ProfilesRoute)
+import Routes.Articles exposing (ArticlesRoute)
+import Routes.Tags exposing (TagsRoute)
+import Json.Encode as JE
 
 
 type Route
-    = Tags
+    = Tags TagsRoute
     | Profiles ProfilesRoute
     | Articles ArticlesRoute
     | Users UsersRoute
@@ -17,45 +18,30 @@ type Route
 
 urlParser : Parser (Route -> parserState) parserState
 urlParser =
-    oneOf
-        [ map Tags (s "tags" </> Routes.Tags.urlParser)
-        , map Profiles (s "profiles" </> Routes.Profiles.urlParser)
-        , map Articles (s "articles" </> Routes.Articles.urlParser)
-        , map Users (s "users" </> urlParserUsers)
-        , map Users (s "user" </> urlParserUser)
-        ]
+    s "api"
+        </> oneOf
+                [ map Tags (s "tags" </> Routes.Tags.urlParser)
+                , map Profiles (s "profiles" </> Routes.Profiles.urlParser)
+                , map Articles (s "articles" </> Routes.Articles.urlParser)
+                , map Users (s "users" </> urlParserUsers)
+                , map Users (s "user" </> urlParserUser)
+                ]
 
 
-routeDispatch : Route -> Method -> Connection -> HandlerState
-routeDispatch route method conn =
-    case route of
-        Tags ->
-            ( Nothing, Cmd.none )
+dispatch : ProgramConfig -> Connection -> HandlerState
+dispatch config conn =
+    case parseString urlParser conn.request.url of
+        Just (Tags tagsRoute) ->
+            HandlerSuccess JE.null
 
-        Profiles profilesRoute ->
-            ( Nothing, Cmd.none )
+        Just (Profiles profilesRoute) ->
+            HandlerSuccess JE.null
 
-        Articles articlesRoute ->
-            ( Nothing, Cmd.none )
+        Just (Articles articlesRoute) ->
+            HandlerSuccess JE.null
 
-        Users usersRoute ->
-            ( Nothing, Cmd.none )
+        Just (Users usersRoute) ->
+            Routes.Users.dispatch config conn usersRoute
 
-
-userRouteDispatch : UsersRoute -> Method -> ( Maybe ( Connection, Continuation ), Cmd Msg )
-userRouteDispatch route method =
-    case ( route, method ) of
-        ( Register, Post ) ->
-            ( Nothing, Cmd.none )
-
-        ( Login, Post ) ->
-            ( Nothing, Cmd.none )
-
-        ( CurrentUser, Get ) ->
-            ( Nothing, Cmd.none )
-
-        ( CurrentUser, Put ) ->
-            ( Nothing, Cmd.none )
-
-        _ ->
-            ( Nothing, Cmd.none )
+        Nothing ->
+            HandlerError NotFound ""
