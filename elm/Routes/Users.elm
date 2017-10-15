@@ -45,28 +45,10 @@ dispatch : ProgramConfig -> Connection -> UsersRoute -> HandlerState
 dispatch config conn route =
     case ( route, conn.request.method ) of
         ( Register, Post ) ->
-            registerUser config.secret conn
+            register config.secret conn
 
         _ ->
             HandlerSuccess JE.null
-
-
-registerUser : Secret -> Connection -> HandlerState
-registerUser secret conn =
-    let
-        inputResult =
-            JD.decodeString
-                decodeCreateUserInputData
-                conn.request.body
-    in
-        case inputResult of
-            Err str ->
-                HandlerError Types.BadRequest str
-
-            Ok regFormData ->
-                AwaitingPort
-                    (HashPassword regFormData.user.password)
-                    (registerUserStep2 secret regFormData)
 
 
 type alias RegistrationFormDetails =
@@ -80,8 +62,18 @@ type alias RegistrationForm =
     { user : RegistrationFormDetails }
 
 
-decodeCreateUserInputData : JD.Decoder RegistrationForm
-decodeCreateUserInputData =
+catchError : HttpStatus -> (a -> HandlerState) -> Result String a -> HandlerState
+catchError errorType onSuccess result =
+    case result of
+        Ok data ->
+            onSuccess data
+
+        Err str ->
+            HandlerError errorType str
+
+
+decodeRegistrationForm : JD.Decoder RegistrationForm
+decodeRegistrationForm =
     JD.map RegistrationForm <|
         JD.field "user" <|
             JD.map3
@@ -91,39 +83,33 @@ decodeCreateUserInputData =
                 (JD.field "password" JD.string)
 
 
-createUser : RegistrationFormDetails -> HashAndSalt -> User
-createUser formDetails hashAndSalt =
-    { id = Nothing
-    , username = formDetails.username
-    , email = formDetails.email
-    , bio = ""
-    , image = ""
-    , hash = hashAndSalt.hash
-    , salt = hashAndSalt.salt
-    }
+register : Secret -> Connection -> HandlerState
+register secret conn =
+    JD.decodeString decodeRegistrationForm conn.request.body
+        |> catchError BadRequest
+            (\regFormData ->
+                AwaitingPort
+                    (HashPassword regFormData.user.password)
+                    (\connection jsHashAndSalt ->
+                        JD.decodeValue decodeHashAndSalt jsHashAndSalt
+                            |> catchError InternalError
+                                (saveNewUser secret regFormData connection)
+                    )
+            )
 
 
-registerUserStep2 : Secret -> RegistrationForm -> Connection -> JD.Value -> HandlerState
-registerUserStep2 secret regFormData conn jsHashAndSalt =
-    case JD.decodeValue decodeHashAndSalt jsHashAndSalt of
-        Ok hashAndSalt ->
-            registerUserStep3 secret regFormData conn hashAndSalt
-
-        Err e ->
-            HandlerError InternalError e
-
-
-
--- TODO: generalise the above function to map Result to HandlerState
-
-
-registerUserStep3 : Secret -> RegistrationForm -> Connection -> HashAndSalt -> HandlerState
-registerUserStep3 secret regFormData conn hashAndSalt =
+saveNewUser : Secret -> RegistrationForm -> Connection -> HashAndSalt -> HandlerState
+saveNewUser secret regFormData conn hashAndSalt =
     let
         user =
-            createUser
-                regFormData.user
-                hashAndSalt
+            { id = Nothing
+            , username = regFormData.user.username
+            , email = regFormData.user.email
+            , bio = ""
+            , image = ""
+            , hash = hashAndSalt.hash
+            , salt = hashAndSalt.salt
+            }
 
         now =
             Tuple.first conn.id
