@@ -126,15 +126,15 @@ mapHttpStatus code =
             ( 503, "Service Unavailable" )
 
 
-errorResponse : HttpStatus -> Response -> Response
-errorResponse status response =
+errorResponse : HttpStatus -> String -> Response -> Response
+errorResponse status body response =
     let
         ( num, str ) =
             mapHttpStatus status
     in
         { response
             | statusCode = num
-            , body = str
+            , body = body
         }
 
 

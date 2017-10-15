@@ -1,6 +1,5 @@
 module Routes exposing (..)
 
-import Connection exposing (HttpStatus(..), errorResponse, successResponse)
 import UrlParser exposing (Parser, oneOf, map, s, (</>))
 import Types exposing (..)
 import Routes.Users exposing (urlParserUsers, urlParserUser)

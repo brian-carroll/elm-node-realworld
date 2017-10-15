@@ -279,4 +279,59 @@ produce different `Route` constructors.
 Suggests tuples of methods and parsers
 Then what does the top level look like??
 
-Don't get fancy, just get dancy...
+Could pass the handler as an arg into some framework function, and require it to have a signature that includes method and auth. Then just curry the route params into it.
+Feels like Method should be part of the routing though.
+
+
+## Handler states, updates, etc.
+- HandlerSuccess JD.Value
+    - update the connection response body
+    - jsActionCmd RespondToClient conn
+    - execute Cmd
+    - the end
+
+- HandlerError HttpStatus String
+    - update the connection response body
+    - jsActionCmd RespondToClient
+    - execute Cmd
+    - the end
+
+- AwaitingPort (HashPassword password) continuation
+    - (should make it impossible to pass in RespondToClient here)
+    - insert connection and continuation into `State`
+    - jsActionCmd (HashPassword password) conn
+    - Update State & execute Cmd
+    - port comes back with an update Msg later
+        - goes into another Msg branch
+        - grab the continuation out of the State
+        - execute it
+        - turn it into another message, loop around again
+
+- AwaitingTask (Task Never HandlerState)
+    - perform the Task (create Cmd)
+    - execute Cmd
+
+
+## What are the things that must create a Msg?
+- Task results
+- Subscriptions
+    - port jsToElm
+    - garbage collection
+
+## What are the things that need State storage?
+- inserting continuations
+- retrieving continuations
+
+## Full flow
+- Request comes in from JS
+- Detected by subscription
+    - Elm runtime converts to `JsInterface`
+    - `decodeDataFromJs` does Union Type decode and further JSON decode to produce `NewConnection conn`
+- Triggers `update` with `ReceiveFromJs (NewConnection conn)`
+    - Decode the `Route`
+    - Decode the JWT
+    - Dispatch on `Route` to a handler
+- Get back a `HandlerState`
+- Run through a `case` to get a `Cmd`
+- Execute the `Cmd`
+

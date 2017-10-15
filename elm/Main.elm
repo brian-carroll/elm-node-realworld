@@ -59,7 +59,7 @@ jsActionCmd elmData conn =
         }
 
 
-main : Program ProgramConfig Model Msg
+main : Program ProgramConfig State Msg
 main =
     Platform.programWithFlags
         { init = init
@@ -68,18 +68,18 @@ main =
         }
 
 
-subscriptions : Model -> Sub Msg
-subscriptions model =
+subscriptions : State -> Sub Msg
+subscriptions state =
     Sub.batch <|
-        (jsToElm (ReceiveFromJs << decodeDataFromJs))
-            :: (if Dict.isEmpty model.pending then
+        (jsToElm ReceiveFromJs)
+            :: (if Dict.isEmpty state.pending then
                     []
                 else
                     [ Time.every Time.second CollectGarbage ]
                )
 
 
-init : ProgramConfig -> ( Model, Cmd Msg )
+init : ProgramConfig -> ( State, Cmd Msg )
 init config =
     ( { config = config
       , pending = Dict.empty
@@ -88,70 +88,104 @@ init config =
     )
 
 
-update : Msg -> Model -> ( Model, Cmd Msg )
-update msg model =
-    case msg of
-        ReceiveFromJs (NewConnection conn) ->
-            let
-                ( maybePending, cmd ) =
-                    registerUserStep1 model.config.secret conn
-            in
-                case maybePending of
-                    Just ( connection, continuation ) ->
-                        ( { model
-                            | pending =
-                                Dict.insert
-                                    connection.id
-                                    ( connection, continuation )
-                                    model.pending
-                          }
-                        , cmd
-                        )
+update : Msg -> State -> ( State, Cmd Msg )
+update msg state =
+    let
+        ( pending, cmd ) =
+            case msg of
+                ReceiveFromJs jsData ->
+                    updateJsData state jsData
 
-                    Nothing ->
-                        ( model, cmd )
+                HandlerTaskResult conn handlerState ->
+                    updateHandlerState conn state.pending handlerState
 
-        ReceiveFromJs (JsActionResult connId jsValue) ->
-            case Dict.get connId model.pending of
+                CollectGarbage now ->
+                    updateGarbageCollection state.pending now
+    in
+        ( { state | pending = pending }, cmd )
+
+
+dumpPendingHandler : ( Connection, a ) -> Cmd Msg
+dumpPendingHandler ( conn, _ ) =
+    jsActionCmd RespondToClient
+        { conn
+            | response =
+                errorResponse RequestTimeout "Timeout" conn.response
+        }
+
+
+updateGarbageCollection : PendingHandlers -> Time -> ( PendingHandlers, Cmd Msg )
+updateGarbageCollection pending now =
+    let
+        predicate ( timestamp, seq ) val =
+            now - timestamp > Time.second
+
+        ( keep, dump ) =
+            Dict.partition predicate pending
+
+        dumpCmds =
+            Dict.foldl
+                (\key value acc -> dumpPendingHandler value :: acc)
+                []
+                (Debug.log "Collecting garbage" dump)
+    in
+        ( keep, Cmd.batch dumpCmds )
+
+
+updateJsData : State -> JsInterface -> ( PendingHandlers, Cmd Msg )
+updateJsData state jsData =
+    case decodeDataFromJs jsData of
+        NewConnection conn ->
+            (registerUserStep1 state.config.secret conn)
+                |> updateHandlerState conn state.pending
+
+        JsActionResult connId jsValue ->
+            case Dict.get connId state.pending of
                 Just ( connection, continueWith ) ->
-                    ( { model | pending = Dict.remove connId model.pending }
-                    , continueWith connection jsValue
-                    )
+                    continueWith connection jsValue
+                        |> updateHandlerState
+                            connection
+                            (Dict.remove connId state.pending)
 
                 Nothing ->
                     Debug.log ("Pending connection not found:\n" ++ toString connId)
-                        ( model, Cmd.none )
+                        ( state.pending, Cmd.none )
 
-        ReceiveFromJs (InboundPortError str) ->
-            ( model, Cmd.none )
+        InboundPortError str ->
+            -- TODO: do something sensible here. Try to respond to client.
+            ( state.pending, Cmd.none )
 
-        SendToJs RespondToClient ->
-            ( model, Cmd.none )
 
-        SendToJs (HashPassword password) ->
-            ( model, Cmd.none )
+updateHandlerState : Connection -> PendingHandlers -> HandlerState -> ( PendingHandlers, Cmd Msg )
+updateHandlerState conn pendingHandlers handlerState =
+    case handlerState of
+        HandlerSuccess json ->
+            ( pendingHandlers
+            , jsActionCmd RespondToClient
+                { conn
+                    | response =
+                        successResponse (JE.encode 0 json) conn.response
+                }
+            )
 
-        CollectGarbage now ->
-            let
-                predicate ( timestamp, seq ) val =
-                    now - timestamp > Time.second
+        HandlerError httpStatus str ->
+            ( pendingHandlers
+            , jsActionCmd RespondToClient
+                { conn
+                    | response =
+                        errorResponse httpStatus str conn.response
+                }
+            )
 
-                ( keep, dump ) =
-                    Dict.partition predicate model.pending
+        AwaitingPort outboundPortAction continuation ->
+            ( Dict.insert conn.id ( conn, continuation ) pendingHandlers
+            , jsActionCmd outboundPortAction conn
+            )
 
-                _ =
-                    -- Need to keep whole connection in the dict, and reply properly
-                    -- foldl it into a list of commands
-                    if not (Dict.isEmpty dump) then
-                        Debug.log "Collecting garbage. Dumping..."
-                            dump
-                    else
-                        dump
-            in
-                ( { model | pending = keep }, Cmd.none )
-
-        ExecuteCmd cmd ->
-            ( model, cmd )
+        AwaitingTask task ->
+            ( pendingHandlers
+            , Task.perform (HandlerTaskResult conn) task
+            )
 
 
 type alias RegistrationFormDetails =
@@ -226,7 +260,7 @@ createDbDoc json =
         Http.post dbUrl body responseDecoder
 
 
-registerUserStep1 : Secret -> Connection -> ( Maybe ( Connection, Continuation ), Cmd Msg )
+registerUserStep1 : Secret -> Connection -> HandlerState
 registerUserStep1 secret conn =
     let
         inputResult =
@@ -237,23 +271,12 @@ registerUserStep1 secret conn =
     in
         case inputResult of
             Err str ->
-                ( Nothing
-                , jsActionCmd RespondToClient
-                    { conn
-                        | response =
-                            Connection.errorResponse
-                                Types.BadRequest
-                                conn.response
-                    }
-                )
+                HandlerError Types.BadRequest str
 
             Ok regFormData ->
-                ( Just
-                    ( conn
-                    , registerUserStep2 secret regFormData
-                    )
-                , jsActionCmd (HashPassword regFormData.user.password) conn
-                )
+                AwaitingPort
+                    (HashPassword regFormData.user.password)
+                    (registerUserStep2 secret regFormData)
 
 
 type alias HashAndSalt =
@@ -269,128 +292,70 @@ decodeHashAndSalt =
         (JD.field "salt" JD.string)
 
 
-registerUserStep2 : Secret -> RegistrationForm -> Connection -> JD.Value -> Cmd Msg
+registerUserStep2 : Secret -> RegistrationForm -> Connection -> JD.Value -> HandlerState
 registerUserStep2 secret regFormData conn jsHashAndSalt =
     case JD.decodeValue decodeHashAndSalt jsHashAndSalt of
         Ok hashAndSalt ->
             registerUserStep3 secret regFormData conn hashAndSalt
 
         Err e ->
-            jsActionCmd RespondToClient
-                { conn
-                    | response = errorResponse InternalError conn.response
-                }
+            HandlerError InternalError e
 
 
-registerUserStep3 : Secret -> RegistrationForm -> Connection -> HashAndSalt -> Cmd Msg
+
+-- TODO: generalise the above function to map Result to HandlerState
+
+
+registerUserStep3 : Secret -> RegistrationForm -> Connection -> HashAndSalt -> HandlerState
 registerUserStep3 secret regFormData conn hashAndSalt =
     let
         user =
-            Debug.log "step 3, creating user datastructure" <|
-                createUser
-                    regFormData.user
-                    (Debug.log "step 3, receiving hash & salt"
-                        hashAndSalt
-                    )
+            createUser
+                regFormData.user
+                hashAndSalt
+
+        now =
+            Tuple.first conn.id
 
         dbTask =
             user
                 |> toDatabaseJSON
                 |> createDbDoc
                 |> Http.toTask
+                |> Task.andThen (Task.succeed << handleDbUserCreatedSuccess secret now user)
+                |> Task.onError (Task.succeed << handleDbError)
     in
-        Task.attempt
-            (registerUserStep4 secret user conn)
-            dbTask
+        AwaitingTask dbTask
 
 
-registerUserStep4 : Secret -> User -> Connection -> Result Http.Error DbCreateDocResponse -> Msg
-registerUserStep4 secret user conn dbResult =
-    let
-        now =
-            Tuple.first conn.id
+handleDbUserCreatedSuccess : Secret -> Time -> User -> DbCreateDocResponse -> HandlerState
+handleDbUserCreatedSuccess secret now user dbResponse =
+    case toAuthJSON secret now { user | id = Just dbResponse.id } of
+        Just json ->
+            HandlerSuccess json
 
-        response =
-            case dbResult of
-                Ok dbResponse ->
-                    case toAuthJSON secret now { user | id = Just dbResponse.id } of
-                        Just json ->
-                            successResponse
-                                (JE.encode 0 json)
-                                conn.response
-
-                        Nothing ->
-                            errorResponse
-                                InternalError
-                                conn.response
-
-                Err httpError ->
-                    handleDbError conn.response
-                        httpError
-    in
-        ExecuteCmd <|
-            jsActionCmd RespondToClient <|
-                { conn
-                    | response = response
-                }
+        Nothing ->
+            HandlerError InternalError "DB user created but has no ID"
 
 
-handleDbError : Response -> Http.Error -> Response
-handleDbError response httpError =
+handleDbError : Http.Error -> HandlerState
+handleDbError httpError =
     case httpError of
         Http.BadUrl url ->
-            errorResponse NotFound response
+            HandlerError NotFound url
 
         Http.Timeout ->
-            errorResponse RequestTimeout response
+            HandlerError RequestTimeout "DB timeout"
 
         Http.NetworkError ->
-            errorResponse RequestTimeout response
+            HandlerError RequestTimeout "DB network error"
 
         Http.BadStatus httpResponse ->
-            { response
-                | statusCode = httpResponse.status.code
-                , body =
-                    -- Debug.log "DB BadStatus"
-                    httpResponse.body
-            }
+            HandlerError
+                InternalError
+                ("DB error: " ++ toString httpResponse)
 
         Http.BadPayload jsonDecoderString httpResponse ->
-            { response
-                | statusCode = 500
-                , body =
-                    -- Debug.log ("DB BadPayload\n" ++ jsonDecoderString ++ "\n")
-                    httpResponse.body
-            }
-
-
-
---
-{-
-
-
-
-   - assemble DB JSON (pure)
-   - send JSON to DB (HTTP effect, task)
-   - receive DB response (task andThen)
-   - handle errors
-   - construct response object
-   - send command to port
-
-
-   router.post('/users', function(req, res, next) {
-   var user = new User();
-
-   user.username = req.body.user.username;
-   user.email = req.body.user.email;
-   user.setPassword(req.body.user.password);
-
-   user
-       .save()
-       .then(function() {
-       return res.json({ user: user.toAuthJSON() });
-       })
-       .catch(next);
-   });
-
--}
+            HandlerError
+                InternalError
+                ("DB error: " ++ toString httpResponse)

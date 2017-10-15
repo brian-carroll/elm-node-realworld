@@ -36,18 +36,33 @@ type alias ProgramConfig =
     { secret : Secret }
 
 
-type alias Model =
+type alias PendingHandlers =
+    Dict ConnectionId ( Connection, Continuation )
+
+
+type alias State =
     { config : ProgramConfig
-    , pending :
-        Dict ConnectionId ( Connection, Continuation )
+    , pending : PendingHandlers
     }
 
 
 type Msg
-    = ReceiveFromJs InboundPortData
-    | SendToJs OutboundPortAction
+    = ReceiveFromJs JsInterface
+    | HandlerTaskResult Connection HandlerState
     | CollectGarbage Time
-    | ExecuteCmd (Cmd Msg)
+
+
+type HandlerState
+    = HandlerSuccess JD.Value -- create OutboundPortAction RespondToClient
+    | HandlerError HttpStatus String -- create OutboundPortAction RespondToClient
+    | AwaitingPort OutboundPortAction Continuation
+    | AwaitingTask (Task Never HandlerState)
+
+
+{-| A continuation function. Pick up where we left off after getting a value back from JS
+-}
+type alias Continuation =
+    Connection -> JD.Value -> HandlerState
 
 
 type alias Connection =
@@ -88,21 +103,3 @@ type Method
     | Post
     | Put
     | Delete
-
-
-type HandlerState
-    = Success JD.Value
-    | Error HttpStatus String
-    | AwaitingPort OutboundPortAction Continuation
-    | AwaitingTask (Task Never HandlerState)
-
-
-
--- type alias Continuation =
---     Connection -> JD.Value -> HandlerState
-
-
-{-| A continuation function. Pick up where we left off after getting a value back from JS
--}
-type alias Continuation =
-    Connection -> JD.Value -> Cmd Msg
