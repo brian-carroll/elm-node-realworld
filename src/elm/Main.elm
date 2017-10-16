@@ -67,20 +67,14 @@ updateHandlerState conn pendingHandlers handlerState =
     case Debug.log "handlerState" handlerState of
         HandlerSuccess json ->
             ( pendingHandlers
-            , jsActionCmd RespondToClient
-                { conn
-                    | response =
-                        successResponse (JE.encode 0 json) conn.response
-                }
+            , jsActionCmd RespondToClient <|
+                successResponse json conn
             )
 
-        HandlerError httpStatus str ->
+        HandlerError httpStatus errors ->
             ( pendingHandlers
-            , jsActionCmd RespondToClient
-                { conn
-                    | response =
-                        errorResponse httpStatus str conn.response
-                }
+            , jsActionCmd RespondToClient <|
+                errorResponse httpStatus errors conn
             )
 
         AwaitingPort outboundPortAction continuation ->
@@ -191,8 +185,5 @@ updateGarbageCollection pending now =
 
 dumpPendingHandler : ( Connection, a ) -> Cmd Msg
 dumpPendingHandler ( conn, _ ) =
-    jsActionCmd RespondToClient
-        { conn
-            | response =
-                errorResponse RequestTimeout "Timeout" conn.response
-        }
+    jsActionCmd RespondToClient <|
+        errorResponse InternalError [ "JS timeout" ] conn

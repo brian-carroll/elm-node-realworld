@@ -44,4 +44,4 @@ dispatch config conn =
             Routes.Users.dispatch config conn usersRoute
 
         Nothing ->
-            HandlerError NotFound ""
+            HandlerError NotFound []

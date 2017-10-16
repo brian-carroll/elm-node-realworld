@@ -58,8 +58,8 @@ type Msg
 
 
 type HandlerState
-    = HandlerSuccess JD.Value -- create OutboundPortAction RespondToClient
-    | HandlerError HttpStatus String -- create OutboundPortAction RespondToClient
+    = HandlerSuccess JD.Value
+    | HandlerError ErrorCode (List String)
     | AwaitingPort OutboundPortAction Continuation
     | AwaitingTask (Task Never HandlerState)
 
@@ -78,15 +78,15 @@ type alias Connection =
     }
 
 
-type HttpStatus
-    = HttpOk
-    | BadRequest
+type ErrorCode
+    = BadRequest
     | Unauthorized
     | Forbidden
     | NotFound
     | MethodNotAllowed
     | RequestTimeout
     | Conflict
+    | UnprocessableEntity
     | InternalError
     | ServiceUnavailable
 

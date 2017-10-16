@@ -80,26 +80,30 @@ handleDbError : Http.Error -> HandlerState
 handleDbError httpError =
     case httpError of
         Http.BadUrl url ->
-            HandlerError NotFound url
+            HandlerError NotFound [ url ]
 
         Http.Timeout ->
-            HandlerError RequestTimeout "DB timeout"
+            HandlerError RequestTimeout [ "DB timeout" ]
 
         Http.NetworkError ->
-            HandlerError RequestTimeout "DB network error"
+            HandlerError RequestTimeout [ "DB network error" ]
 
         Http.BadStatus httpResponse ->
             HandlerError
                 InternalError
-                (""" {"dbErrors": """
-                    ++ httpResponse.body
-                    ++ "}"
-                )
+                (mapDbErrors httpResponse.body)
 
         Http.BadPayload jsonDecoderString httpResponse ->
             HandlerError
                 InternalError
-                (""" {"dbErrors": """
-                    ++ httpResponse.body
-                    ++ "}"
-                )
+                (mapDbErrors httpResponse.body)
+
+
+mapDbErrors : String -> List String
+mapDbErrors errorBody =
+    case JD.decodeString (JD.list (JD.field "error" JD.string)) errorBody of
+        Ok messages ->
+            messages
+
+        Err _ ->
+            [ "Unknown DB error" ]

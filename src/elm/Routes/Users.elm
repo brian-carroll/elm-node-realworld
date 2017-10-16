@@ -7,6 +7,7 @@ import Json.Encode as JE
 import Models.User exposing (..)
 import Task exposing (Task)
 import Database exposing (..)
+import Dict
 
 
 type UsersRoute
@@ -51,7 +52,7 @@ dispatch config conn route =
                         register config.secret conn
 
                     _ ->
-                        HandlerError MethodNotAllowed ""
+                        HandlerError MethodNotAllowed []
 
             Login ->
                 case method of
@@ -59,18 +60,18 @@ dispatch config conn route =
                         login config.secret conn
 
                     _ ->
-                        HandlerError MethodNotAllowed ""
+                        HandlerError MethodNotAllowed []
 
             CurrentUser ->
                 case method of
                     Get ->
-                        HandlerError InternalError ""
+                        HandlerError InternalError []
 
                     Put ->
-                        HandlerError InternalError ""
+                        HandlerError InternalError []
 
                     _ ->
-                        HandlerError MethodNotAllowed ""
+                        HandlerError MethodNotAllowed []
 
 
 type alias RegistrationFormUser =
@@ -84,14 +85,14 @@ type alias RegistrationForm =
     { user : RegistrationFormUser }
 
 
-catchError : HttpStatus -> (a -> HandlerState) -> Result String a -> HandlerState
-catchError errorType onSuccess result =
+catchError : ErrorCode -> (a -> HandlerState) -> Result String a -> HandlerState
+catchError errorCode onSuccess result =
     case result of
         Ok data ->
             onSuccess data
 
         Err str ->
-            HandlerError errorType str
+            HandlerError errorCode [ str ]
 
 
 decodeRegistrationForm : JD.Decoder RegistrationForm
@@ -152,9 +153,7 @@ onSaveUserSuccess successJson dbResponse =
         HandlerSuccess successJson
     else
         HandlerError InternalError <|
-            """ {"dbErrors": ["""
-                ++ (String.join ", " <| List.filterMap .error dbResponse)
-                ++ """ ]} """
+            List.filterMap .error dbResponse
 
 
 type alias LoginForm =
@@ -218,7 +217,31 @@ login secret conn =
                                 JE.object
                                     [ ( "user", toAuthJSON secret conn.timestamp user ) ]
                         else
-                            HandlerError Unauthorized "Wrong username or password"
+                            HandlerError Unauthorized [ "Wrong username or password" ]
                     )
     in
         validateInput
+
+
+requireAuth : Secret -> Connection -> HandlerState
+requireAuth secret conn =
+    -- let
+    --     token =
+    --     verificationResult =
+    --         verifyJWT secret conn.timestamp token
+    -- in
+    case Dict.get "Authorization" conn.request.headers of
+        Nothing ->
+            HandlerError Unauthorized []
+
+        Just s ->
+            let
+                authWords =
+                    String.words s
+            in
+                HandlerSuccess JE.null
+
+
+getCurrentUser : Secret -> Connection -> HandlerState
+getCurrentUser secret conn =
+    requireAuth secret conn

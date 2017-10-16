@@ -88,55 +88,75 @@ defaultHeaders =
         ]
 
 
-mapHttpStatus : HttpStatus -> ( Int, String )
+mapHttpStatus : ErrorCode -> Int
 mapHttpStatus code =
     case code of
-        HttpOk ->
-            ( 200, "OK" )
-
         BadRequest ->
-            ( 400, "Bad Request" )
+            400
 
         Unauthorized ->
-            ( 401, "Unauthorized" )
+            401
 
         Forbidden ->
-            ( 403, "Forbidden" )
+            403
 
         NotFound ->
-            ( 404, "Not Found" )
+            404
 
         MethodNotAllowed ->
-            ( 405, "Method Not Allowed" )
+            405
 
         RequestTimeout ->
-            ( 408, "Request Timeout" )
+            408
 
         Conflict ->
-            ( 409, "Conflict" )
+            409
+
+        UnprocessableEntity ->
+            422
 
         InternalError ->
-            ( 500, "Internal Error" )
+            500
 
         ServiceUnavailable ->
-            ( 503, "Service Unavailable" )
+            503
 
 
-errorResponse : HttpStatus -> String -> Response -> Response
-errorResponse status body response =
+successResponse : JE.Value -> Connection -> Connection
+successResponse json conn =
     let
-        ( num, str ) =
-            mapHttpStatus status
+        res =
+            conn.response
     in
-        { response
-            | statusCode = num
-            , body = body
+        { conn
+            | response =
+                { res
+                    | body = JE.encode 0 json
+                }
         }
 
 
-successResponse : String -> Response -> Response
-successResponse str response =
-    { response
-        | statusCode = 200
-        , body = str
-    }
+errorResponse : ErrorCode -> List String -> Connection -> Connection
+errorResponse httpStatus errors conn =
+    let
+        res =
+            conn.response
+
+        json =
+            JE.object
+                [ ( "errors"
+                  , JE.object
+                        [ ( "body"
+                          , JE.list (List.map JE.string errors)
+                          )
+                        ]
+                  )
+                ]
+    in
+        { conn
+            | response =
+                { res
+                    | body = JE.encode 0 json
+                    , statusCode = mapHttpStatus httpStatus
+                }
+        }
