@@ -14,10 +14,11 @@ import Types exposing (..)
 
 decodeConnection : ConnectionId -> JD.Decoder Connection
 decodeConnection connectionId =
-    JD.map3 Connection
+    JD.map4 Connection
         (JD.field "request" decodeRequest)
         (JD.field "response" decodeResponse)
         (JD.succeed connectionId)
+        (JD.succeed <| Tuple.first connectionId)
 
 
 decodeRequest : JD.Decoder Request
@@ -27,20 +28,6 @@ decodeRequest =
         (JD.field "url" JD.string)
         (JD.field "headers" <| JD.dict JD.string)
         (JD.field "body" JD.string)
-
-
-
--- decodeRoute : JD.Decoder Route
--- decodeRoute =
---     JD.string
---         |> JD.andThen
---             (\s ->
---                 case routeParser s of
---                     Just route ->
---                         JD.succeed route
---                     Nothing ->
---                         JD.fail "Route"
---             )
 
 
 decodeMethod : JD.Decoder Method
@@ -109,6 +96,12 @@ mapHttpStatus code =
 
         BadRequest ->
             ( 400, "Bad Request" )
+
+        Unauthorized ->
+            ( 401, "Unauthorized" )
+
+        Forbidden ->
+            ( 403, "Forbidden" )
 
         NotFound ->
             ( 404, "Not Found" )

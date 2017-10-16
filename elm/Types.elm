@@ -20,6 +20,11 @@ type alias JsInterface =
 type OutboundPortAction
     = RespondToClient
     | HashPassword String
+    | CheckPassword
+        { hash : String
+        , salt : String
+        , plainText : String
+        }
 
 
 type InboundPortData
@@ -69,12 +74,15 @@ type alias Connection =
     { request : Request
     , response : Response
     , id : ConnectionId
+    , timestamp : Time
     }
 
 
 type HttpStatus
     = HttpOk
     | BadRequest
+    | Unauthorized
+    | Forbidden
     | NotFound
     | MethodNotAllowed
     | RequestTimeout

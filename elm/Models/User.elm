@@ -120,6 +120,73 @@ toDatabaseJSON user =
             ]
 
 
+databaseJsonDecoder : Decoder User
+databaseJsonDecoder =
+    JD.field "rows"
+        (JD.index 0
+            (JD.map7 User
+                (JD.at [ "doc", "_rev" ] (JD.map Just JD.string))
+                (JD.at [ "doc", "_id" ] decodeUsernameFromId)
+                (JD.at [ "id" ] decodeEmailFromId)
+                (JD.at [ "doc", "bio" ] JD.string)
+                (JD.at [ "doc", "image" ] JD.string)
+                (JD.at [ "doc", "hash" ] JD.string)
+                (JD.at [ "doc", "salt" ] JD.string)
+            )
+        )
+
+
+dropPrefix : String -> String -> String
+dropPrefix prefix str =
+    String.dropLeft
+        (String.length prefix)
+        str
+
+
+decodeUsernameFromId : Decoder Username
+decodeUsernameFromId =
+    JD.string
+        |> JD.andThen
+            (\usernameId ->
+                usernameId
+                    |> dropPrefix "user:"
+                    |> Username
+                    |> JD.succeed
+            )
+
+
+decodeEmailFromId : Decoder Email
+decodeEmailFromId =
+    JD.string
+        |> JD.andThen
+            (\emailId ->
+                emailId
+                    |> dropPrefix "email:"
+                    |> Email
+                    |> JD.succeed
+            )
+
+
+findByEmail : Email -> Task Http.Error User
+findByEmail email =
+    let
+        emailStr =
+            case email of
+                Email str ->
+                    str
+
+        url =
+            Debug.log "findByEmail, URL"
+                (Database.dbUrl
+                    ++ "/_design/usersByEmail/_view/users-by-email?include_docs=true&key=\"email:"
+                    ++ emailStr
+                    ++ "\""
+                )
+    in
+        Http.get url databaseJsonDecoder
+            |> Http.toTask
+
+
 save : User -> Task Http.Error Database.DbPostBulkResponse
 save user =
     user
@@ -153,18 +220,38 @@ toProfileJSONFor viewingUser profileUser =
         ]
 
 
+type alias HashAndSalt =
+    { hash : String
+    , salt : String
+    }
+
+
+decodeHashAndSalt : JD.Decoder HashAndSalt
+decodeHashAndSalt =
+    JD.map2 HashAndSalt
+        (JD.field "hash" JD.string)
+        (JD.field "salt" JD.string)
+
+
 type alias JwtPayload =
     { username : String
     , exp : Int
     }
 
 
-payloadEncoder : JwtPayload -> JE.Value
-payloadEncoder payload =
+jwtPayloadEncoder : JwtPayload -> JE.Value
+jwtPayloadEncoder payload =
     JE.object
         [ ( "username", JE.string payload.username )
         , ( "exp", JE.int payload.exp )
         ]
+
+
+jwtPayloadDecoder : Decoder JwtPayload
+jwtPayloadDecoder =
+    JD.map2 JwtPayload
+        (JD.field "username" JD.string)
+        (JD.field "exp" JD.int)
 
 
 generateJWT : Secret -> Time.Time -> User -> String
@@ -173,21 +260,21 @@ generateJWT secret now user =
         Username usernameStr ->
             JWT.encode
                 JWT.hmacSha256
-                payloadEncoder
+                jwtPayloadEncoder
                 secret
                 { username = usernameStr
                 , exp = round ((now + Time.hour * 24 * 14) / 1000)
                 }
 
 
-setPassword : User -> User
-setPassword user =
-    { user
-        | hash = user.hash
-        , salt = user.salt
-    }
+verifyJWT : Secret -> Time.Time -> String -> Result String JwtPayload
+verifyJWT secret now token =
+    case JWT.decode jwtPayloadDecoder secret token of
+        Ok payload ->
+            if payload.exp < round (now / 1000) then
+                Err "Token expired"
+            else
+                Ok payload
 
-
-matchPassword : String -> String -> Bool
-matchPassword p1 p2 =
-    p1 == p2
+        Err e ->
+            Err <| Debug.log (toString e) "Token invalid"

@@ -98,7 +98,7 @@ handleDbError httpError =
 
         Http.BadPayload jsonDecoderString httpResponse ->
             HandlerError
-                Conflict
+                InternalError
                 (""" {"dbErrors": """
                     ++ httpResponse.body
                     ++ "}"

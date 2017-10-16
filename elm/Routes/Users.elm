@@ -5,9 +5,8 @@ import Types exposing (..)
 import Json.Decode as JD
 import Json.Encode as JE
 import Models.User exposing (..)
-import Task
+import Task exposing (Task)
 import Database exposing (..)
-import Auth exposing (HashAndSalt, decodeHashAndSalt)
 
 
 type UsersRoute
@@ -41,15 +40,40 @@ urlParserUser =
 
 dispatch : ProgramConfig -> Connection -> UsersRoute -> HandlerState
 dispatch config conn route =
-    case ( route, conn.request.method ) of
-        ( Register, Post ) ->
-            register config.secret conn
+    let
+        method =
+            conn.request.method
+    in
+        case route of
+            Register ->
+                case method of
+                    Post ->
+                        register config.secret conn
 
-        _ ->
-            HandlerSuccess JE.null
+                    _ ->
+                        HandlerError MethodNotAllowed ""
+
+            Login ->
+                case method of
+                    Post ->
+                        login config.secret conn
+
+                    _ ->
+                        HandlerError MethodNotAllowed ""
+
+            CurrentUser ->
+                case method of
+                    Get ->
+                        HandlerError InternalError ""
+
+                    Put ->
+                        HandlerError InternalError ""
+
+                    _ ->
+                        HandlerError MethodNotAllowed ""
 
 
-type alias RegistrationFormDetails =
+type alias RegistrationFormUser =
     { username : Username
     , email : Email
     , password : String
@@ -57,7 +81,7 @@ type alias RegistrationFormDetails =
 
 
 type alias RegistrationForm =
-    { user : RegistrationFormDetails }
+    { user : RegistrationFormUser }
 
 
 catchError : HttpStatus -> (a -> HandlerState) -> Result String a -> HandlerState
@@ -75,7 +99,7 @@ decodeRegistrationForm =
     JD.map RegistrationForm <|
         JD.field "user" <|
             JD.map3
-                RegistrationFormDetails
+                RegistrationFormUser
                 (JD.field "username" decodeUsername)
                 (JD.field "email" decodeEmail)
                 (JD.field "password" JD.string)
@@ -109,13 +133,14 @@ saveNewUser secret regFormData conn hashAndSalt =
             , salt = hashAndSalt.salt
             }
 
-        now =
-            Tuple.first conn.id
+        successJson =
+            JE.object
+                [ ( "user", toAuthJSON secret conn.timestamp user ) ]
 
         dbTask =
             user
                 |> Models.User.save
-                |> Task.andThen (Task.succeed << onSaveUserSuccess (toAuthJSON secret now user))
+                |> Task.andThen (Task.succeed << onSaveUserSuccess successJson)
                 |> Task.onError (Task.succeed << handleDbError)
     in
         AwaitingTask dbTask
@@ -130,3 +155,70 @@ onSaveUserSuccess successJson dbResponse =
             """ {"dbErrors": ["""
                 ++ (String.join ", " <| List.filterMap .error dbResponse)
                 ++ """ ]} """
+
+
+type alias LoginForm =
+    { user : LoginFormUser
+    }
+
+
+type alias LoginFormUser =
+    { email : Email
+    , password : String
+    }
+
+
+decodeLoginForm : JD.Decoder LoginForm
+decodeLoginForm =
+    JD.map LoginForm
+        (JD.field "user" decodeLoginFormUser)
+
+
+decodeLoginFormUser : JD.Decoder LoginFormUser
+decodeLoginFormUser =
+    JD.map2 LoginFormUser
+        (JD.field "email" Models.User.decodeEmail)
+        (JD.field "password" JD.string)
+
+
+login : Secret -> Connection -> HandlerState
+login secret conn =
+    let
+        _ =
+            Debug.log "Executing handler" "login"
+
+        validateInput : HandlerState
+        validateInput =
+            conn.request.body
+                |> JD.decodeString decodeLoginForm
+                |> catchError Types.BadRequest
+                    (\formData -> fetchUserFromDb formData)
+
+        fetchUserFromDb : LoginForm -> HandlerState
+        fetchUserFromDb formData =
+            AwaitingTask
+                (Models.User.findByEmail (formData.user.email)
+                    |> Task.andThen (Task.succeed << checkPassword formData.user.password)
+                    |> Task.onError (Task.succeed << handleDbError)
+                )
+
+        checkPassword : String -> User -> HandlerState
+        checkPassword formPassword user =
+            AwaitingPort
+                (CheckPassword { hash = user.hash, salt = user.salt, plainText = formPassword })
+                (loginResponse (Debug.log "After fetchUserFromDb" user))
+
+        loginResponse : User -> Connection -> JD.Value -> HandlerState
+        loginResponse user conn jsData =
+            JD.decodeValue (JD.field "passwordIsValid" JD.bool) jsData
+                |> catchError InternalError
+                    (\isValid ->
+                        if isValid then
+                            HandlerSuccess <|
+                                JE.object
+                                    [ ( "user", toAuthJSON secret conn.timestamp user ) ]
+                        else
+                            HandlerError Unauthorized "Wrong username or password"
+                    )
+    in
+        validateInput

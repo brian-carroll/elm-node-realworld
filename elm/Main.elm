@@ -64,7 +64,7 @@ update msg state =
 
 updateHandlerState : Connection -> PendingHandlers -> HandlerState -> ( PendingHandlers, Cmd Msg )
 updateHandlerState conn pendingHandlers handlerState =
-    case handlerState of
+    case Debug.log "handlerState" handlerState of
         HandlerSuccess json ->
             ( pendingHandlers
             , jsActionCmd RespondToClient
@@ -161,6 +161,13 @@ jsActionCmd elmData conn =
 
                 HashPassword plain ->
                     JE.string plain
+
+                CheckPassword { hash, salt, plainText } ->
+                    JE.object
+                        [ ( "hash", JE.string hash )
+                        , ( "salt", JE.string salt )
+                        , ( "plainText", JE.string plainText )
+                        ]
         }
 
 

@@ -33,7 +33,7 @@ const respondToClient = ({ nodeResponseObject, statusCode, headers, body }) => {
   nodeResponseObject.end(body);
 };
 
-const hashPassword = plainText =>
+const generateSalt = () =>
   new Promise((resolve, reject) => {
     crypto.randomBytes(256, (err, buf) => {
       if (err) {
@@ -42,22 +42,14 @@ const hashPassword = plainText =>
         resolve(buf.toString('base64'));
       }
     });
-  }).then(
-    salt =>
-      new Promise((resolve, reject) => {
-        const callback = (err, derivedKey) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve({
-              hash: derivedKey.toString('base64'),
-              salt,
-            });
-          }
-        };
-        crypto.pbkdf2(plainText, salt, 100000, 512, 'sha512', callback);
-      })
-  );
+  });
+
+const hashPassword = (plainText, salt) =>
+  new Promise((resolve, reject) => {
+    const callback = (err, derivedKey) =>
+      err ? reject(err) : resolve(derivedKey);
+    crypto.pbkdf2(plainText, salt, 100000, 512, 'sha512', callback);
+  });
 
 function handleActionsFromElm(elmData) {
   console.log('handleActionsFromElm', elmData.tag);
@@ -67,22 +59,48 @@ function handleActionsFromElm(elmData) {
       break;
 
     case 'HashPassword':
-      const plainText = elmData.payload;
-      hashPassword(plainText)
-        .then(({ hash, salt }) =>
-          sendToElm({
-            ...elmData,
-            tag: 'JsActionResult',
-            payload: { hash, salt },
-          })
-        )
-        .catch(e =>
-          sendToElm({
-            ...elmData,
-            tag: 'JsError',
-            payload: e.toString(),
-          })
-        );
+      (plainText =>
+        generateSalt()
+          .then(salt =>
+            hashPassword(plainText, salt)
+              .then(buffer => buffer.toString('base64'))
+              .then(hash =>
+                sendToElm({
+                  ...elmData,
+                  tag: 'JsActionResult',
+                  payload: { hash, salt },
+                })
+              )
+          )
+          .catch(e =>
+            sendToElm({
+              ...elmData,
+              tag: 'JsError',
+              payload: e.toString(),
+            })
+          ))(elmData.payload);
+      break;
+
+    case 'CheckPassword':
+      (({ hash, salt, plainText }) => {
+        const dbHash = new Buffer(hash, 'base64');
+        hashPassword(plainText, salt)
+          .then(formHash => crypto.timingSafeEqual(dbHash, formHash))
+          .then(passwordIsValid =>
+            sendToElm({
+              ...elmData,
+              tag: 'JsActionResult',
+              payload: { passwordIsValid },
+            })
+          )
+          .catch(e =>
+            sendToElm({
+              ...elmData,
+              tag: 'JsError',
+              payload: e.toString(),
+            })
+          );
+      })(elmData.payload);
       break;
 
     default:

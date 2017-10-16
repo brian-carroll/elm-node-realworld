@@ -1,0 +1,22 @@
+{
+  "total_rows": 1,
+  "offset": 0,
+  "rows": [
+    {
+      "id": "email:john@jacob.co",
+      "key": "email:john@jacob.co",
+      "value": {
+        "_id": "user:johnjacoby"
+      },
+      "doc": {
+        "_id": "user:johnjacoby",
+        "_rev": "1-326e61ae06f65473ddfebdb9e47620b1",
+        "type": "User",
+        "bio": "",
+        "image": "",
+        "hash": "n7Gg1u7S7KJO3UpwdIaZ3TkQgY6mC4siJcKU/TKMJmQDW91vlB510VGjbpclwUk/m8V93pLH8xVEbFlLqP/31OZswMjTWCYA28TNQTA0kwpWfDLoKB1mqLu4PhFZwPXzd2yXMbRR0fn0St1MwZrfWFVACqwKM4e0xckiivC98Bm5QOXuJ/szkRphy1074cV1r1r7UEBURv+4R4E2e8yB1nPm+Aj4I0YSNQ7zoO23c/0oDvMzARBzjNkL7GgE65ZHkoqug2kUNZvAInnr8CgD1zJuFiwx83Ag9y0OvJ7OyK9Oj15JEbTdFU7L9KPs1bumfqKbihXxhqQu0IQKOV/tz+RwXTJRnc3KQtgL6nvKvlxrvTZxbkc8X40AQVvfj/yy4lWiWeeUSRa/euSSwchAUxyzV1lHH+LIFUeZuzmK72kC6fTmL0HsSuP7hFcsYnuj+ZZJIRRQKJzx3VEZB0ya+d6Lk09ns+vUobjx/p+S3znW+Kbjfg0vF07C4N8JVrmqABSYtWXGVDR2d1ysFCSDxQgQmRWMtVG4y3suOesROP7TXoOml/LE2IvEO3PJ2CKYzYeXJ/WVrFexcbf+lsc3KgOrD4cgIwwQjXgLEOA8uXNt/AtreI6GwE9gTydXQKYR2ttqBPT1FwYlfkRYpHyDno83wHPZaVLguCSYY3xMd04=",
+        "salt": "Svy9im6ZNwqMQHoTd+zgjitfuUAq0Ujup3jutI9f52K2ASVSnYvmuYd99k9qf09/ihyb2DbCOgcXM6JMMPws7MZt4xJE4FhCrGko6jsbCXCqgODwxkTLfRLU6QkNQ68kNpcbqzceZIEsisgDkz9g0oUW9wBIuN2sD3Wo+IaD6ZMHst9A7x2M0bJhnHzX/7P6t2W7DpQN4MsOUwTqGDMIZrBx1qbdt0yG6KPqXROKpeZTgO3WuWZPbgdbhcdJf/rcS3OCU6iLRZDZVtVldd+aOCvE0tJaAHOPdyWbKW4O/Z54G1dDFN5CKM/4acKizbrLKTDeJzM7nxzr9mrUo3ee0g=="
+      }
+    }
+  ]
+}
