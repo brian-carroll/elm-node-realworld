@@ -79,16 +79,12 @@ type alias Connection =
 
 
 type ErrorCode
-    = BadRequest
-    | Unauthorized
+    = Unauthorized
     | Forbidden
     | NotFound
     | MethodNotAllowed
-    | RequestTimeout
-    | Conflict
     | UnprocessableEntity
     | InternalError
-    | ServiceUnavailable
 
 
 type alias Request =

@@ -91,9 +91,6 @@ defaultHeaders =
 mapHttpStatus : ErrorCode -> Int
 mapHttpStatus code =
     case code of
-        BadRequest ->
-            400
-
         Unauthorized ->
             401
 
@@ -106,20 +103,11 @@ mapHttpStatus code =
         MethodNotAllowed ->
             405
 
-        RequestTimeout ->
-            408
-
-        Conflict ->
-            409
-
         UnprocessableEntity ->
             422
 
         InternalError ->
             500
-
-        ServiceUnavailable ->
-            503
 
 
 successResponse : JE.Value -> Connection -> Connection

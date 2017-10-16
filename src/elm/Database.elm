@@ -83,10 +83,10 @@ handleDbError httpError =
             HandlerError NotFound [ url ]
 
         Http.Timeout ->
-            HandlerError RequestTimeout [ "DB timeout" ]
+            HandlerError InternalError [ "DB timeout" ]
 
         Http.NetworkError ->
-            HandlerError RequestTimeout [ "DB network error" ]
+            HandlerError InternalError [ "DB network error" ]
 
         Http.BadStatus httpResponse ->
             HandlerError

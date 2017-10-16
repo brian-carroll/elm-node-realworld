@@ -109,7 +109,7 @@ decodeRegistrationForm =
 register : Secret -> Connection -> HandlerState
 register secret conn =
     JD.decodeString decodeRegistrationForm conn.request.body
-        |> catchError Types.BadRequest
+        |> catchError UnprocessableEntity
             (\regFormData ->
                 AwaitingPort
                     (HashPassword regFormData.user.password)
@@ -190,7 +190,7 @@ login secret conn =
         validateInput =
             conn.request.body
                 |> JD.decodeString decodeLoginForm
-                |> catchError Types.BadRequest
+                |> catchError UnprocessableEntity
                     (\formData -> fetchUserFromDb formData)
 
         fetchUserFromDb : LoginForm -> HandlerState
