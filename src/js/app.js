@@ -4,7 +4,7 @@
 global.XMLHttpRequest = require('./xhr-elm'); // Polyfill for elm-lang/http
 const http = require('http');
 const crypto = require('crypto');
-const Elm = require('./elm');
+const Elm = require('../../build/elm');
 
 //-----------------------------------------------
 // Config
