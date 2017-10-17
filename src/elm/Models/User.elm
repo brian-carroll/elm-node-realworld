@@ -110,6 +110,7 @@ toDatabaseJSON user =
                     , JE.object
                         [ ( "_id", userId )
                         , ( "type", JE.string "User" )
+                        , ( "email", encodeEmail user.email )
                         , ( "bio", JE.string user.bio )
                         , ( "image", JE.string user.image )
                         , ( "hash", JE.string user.hash )
@@ -120,20 +121,23 @@ toDatabaseJSON user =
             ]
 
 
-databaseJsonDecoder : Decoder User
-databaseJsonDecoder =
-    JD.field "rows"
-        (JD.index 0
-            (JD.map7 User
-                (JD.at [ "doc", "_rev" ] (JD.map Just JD.string))
-                (JD.at [ "doc", "_id" ] decodeUsernameFromId)
-                (JD.at [ "id" ] decodeEmailFromId)
-                (JD.at [ "doc", "bio" ] JD.string)
-                (JD.at [ "doc", "image" ] JD.string)
-                (JD.at [ "doc", "hash" ] JD.string)
-                (JD.at [ "doc", "salt" ] JD.string)
-            )
-        )
+dbUserDocDecoder : Decoder User
+dbUserDocDecoder =
+    JD.map7 User
+        (JD.field "_rev" (JD.map Just JD.string))
+        (JD.field "_id" decodeUsernameFromId)
+        (JD.field "email" decodeEmail)
+        (JD.field "bio" JD.string)
+        (JD.field "image" JD.string)
+        (JD.field "hash" JD.string)
+        (JD.field "salt" JD.string)
+
+
+dBUserByEmailDecoder : Decoder User
+dBUserByEmailDecoder =
+    JD.field "rows" <|
+        JD.index 0 <|
+            JD.field "doc" dbUserDocDecoder
 
 
 dropPrefix : String -> String -> String
@@ -167,6 +171,24 @@ decodeEmailFromId =
             )
 
 
+findByUsername : Username -> Task Http.Error User
+findByUsername username =
+    let
+        usernameId =
+            case username of
+                Username str ->
+                    "user:" ++ str
+
+        url =
+            Debug.log "user url" <|
+                Database.dbUrl
+                    ++ "/"
+                    ++ usernameId
+    in
+        Http.get url dbUserDocDecoder
+            |> Http.toTask
+
+
 findByEmail : Email -> Task Http.Error User
 findByEmail email =
     let
@@ -183,7 +205,7 @@ findByEmail email =
                     ++ "\""
                 )
     in
-        Http.get url databaseJsonDecoder
+        Http.get url dBUserByEmailDecoder
             |> Http.toTask
 
 
@@ -234,7 +256,7 @@ decodeHashAndSalt =
 
 
 type alias JwtPayload =
-    { username : String
+    { username : Username
     , exp : Int
     }
 
@@ -242,7 +264,7 @@ type alias JwtPayload =
 jwtPayloadEncoder : JwtPayload -> JE.Value
 jwtPayloadEncoder payload =
     JE.object
-        [ ( "username", JE.string payload.username )
+        [ ( "username", encodeUsername payload.username )
         , ( "exp", JE.int payload.exp )
         ]
 
@@ -250,21 +272,19 @@ jwtPayloadEncoder payload =
 jwtPayloadDecoder : Decoder JwtPayload
 jwtPayloadDecoder =
     JD.map2 JwtPayload
-        (JD.field "username" JD.string)
+        (JD.field "username" decodeUsername)
         (JD.field "exp" JD.int)
 
 
 generateJWT : Secret -> Time.Time -> User -> String
 generateJWT secret now user =
-    case user.username of
-        Username usernameStr ->
-            JWT.encode
-                JWT.hmacSha256
-                jwtPayloadEncoder
-                secret
-                { username = usernameStr
-                , exp = round ((now + Time.hour * 24 * 14) / 1000)
-                }
+    JWT.encode
+        JWT.hmacSha256
+        jwtPayloadEncoder
+        secret
+        { username = user.username
+        , exp = round ((now + Time.hour * 24 * 14) / 1000)
+        }
 
 
 verifyJWT : Secret -> Time.Time -> String -> Result String JwtPayload

@@ -65,7 +65,7 @@ dispatch config conn route =
             CurrentUser ->
                 case method of
                     Get ->
-                        HandlerError InternalError []
+                        getCurrentUser config.secret conn
 
                     Put ->
                         HandlerError InternalError []
@@ -83,16 +83,6 @@ type alias RegistrationFormUser =
 
 type alias RegistrationForm =
     { user : RegistrationFormUser }
-
-
-catchError : ErrorCode -> (a -> HandlerState) -> Result String a -> HandlerState
-catchError errorCode onSuccess result =
-    case result of
-        Ok data ->
-            onSuccess data
-
-        Err str ->
-            HandlerError errorCode [ str ]
 
 
 decodeRegistrationForm : JD.Decoder RegistrationForm
@@ -205,7 +195,7 @@ login secret conn =
         checkPassword formPassword user =
             AwaitingPort
                 (CheckPassword { hash = user.hash, salt = user.salt, plainText = formPassword })
-                (loginResponse (Debug.log "After fetchUserFromDb" user))
+                (loginResponse user)
 
         loginResponse : User -> Connection -> JD.Value -> HandlerState
         loginResponse user conn jsData =
@@ -223,25 +213,63 @@ login secret conn =
         validateInput
 
 
-requireAuth : Secret -> Connection -> HandlerState
+requireAuth : Secret -> Connection -> Result String JwtPayload
 requireAuth secret conn =
-    -- let
-    --     token =
-    --     verificationResult =
-    --         verifyJWT secret conn.timestamp token
-    -- in
-    case Dict.get "Authorization" conn.request.headers of
-        Nothing ->
-            HandlerError Unauthorized []
+    case Dict.get "authorization" conn.request.headers of
+        Just auth ->
+            case String.words auth of
+                [ "Token", token ] ->
+                    verifyJWT secret conn.timestamp token
 
-        Just s ->
+                _ ->
+                    Err "Invalid token"
+
+        Nothing ->
             let
-                authWords =
-                    String.words s
+                headersJsonString =
+                    conn.request.headers
+                        |> Dict.map (\k v -> JE.string v)
+                        |> Dict.toList
+                        |> JE.object
+                        |> JE.encode 2
             in
-                HandlerSuccess JE.null
+                Err ("Authorization token not found in " ++ headersJsonString)
 
 
 getCurrentUser : Secret -> Connection -> HandlerState
 getCurrentUser secret conn =
-    requireAuth secret conn
+    let
+        validateInput : HandlerState
+        validateInput =
+            requireAuth secret conn
+                |> catchError Unauthorized
+                    (\jwtPayload -> getUserDoc jwtPayload.username)
+
+        getUserDoc : Username -> HandlerState
+        getUserDoc username =
+            AwaitingTask
+                (findByUsername username
+                    |> Task.andThen (Task.succeed << generateResponse)
+                    |> Task.onError (Task.succeed << handleDbError)
+                )
+
+        generateResponse : User -> HandlerState
+        generateResponse user =
+            HandlerSuccess <|
+                JE.object <|
+                    [ ( "user"
+                      , toAuthJSON secret conn.timestamp user
+                      )
+                    ]
+    in
+        validateInput
+
+
+catchError : ErrorCode -> (a -> HandlerState) -> Result String a -> HandlerState
+catchError errorCode onSuccess result =
+    case result of
+        Ok data ->
+            onSuccess data
+
+        Err str ->
+            HandlerError errorCode [ str ]
