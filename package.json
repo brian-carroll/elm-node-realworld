@@ -7,11 +7,13 @@
     "xmlhttprequest": "^1.8.0"
   },
   "devDependencies": {
-    "elm": "^0.18.0"
+    "elm": "^0.18.0",
+    "nodemon": "^1.12.1"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "elm-make src/elm/Main.elm --output build/elm.js",
+    "watch": "nodemon -w src -e elm,js --exec \"elm-make src/elm/Main.elm --output build/elm.js && node src/js/app.js\"",
     "start": "npm run build && node src/js/app.js"
   },
   "author": "",
