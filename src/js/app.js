@@ -11,13 +11,15 @@ const Elm = require('../../build/elm');
 //-----------------------------------------------
 const hostname = '127.0.0.1';
 const port = 8000;
-const secret =
-  process.env.NODE_ENV === 'production' ? process.env.SECRET : 'secret';
 
 //-----------------------------------------------
 // Elm setup
 //-----------------------------------------------
-const elmFlags = { secret };
+const elmFlags = {
+  secret: process.env.NODE_ENV === 'production' ? process.env.SECRET : 'secret',
+  jsActionTimeout: 1000, // JS interop actions will be abandoned after this timeout
+  jsActionCheckInterval: 1000, // Check this often whether JS actions have timed out
+};
 const elmApp = Elm.Main.worker(elmFlags);
 elmApp.ports.elmToJs.subscribe(handleActionsFromElm);
 const sendToElm = x => {

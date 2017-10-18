@@ -30,7 +30,7 @@ type OutboundPortAction
 type InboundPortData
     = NewConnection Connection
     | JsActionResult ConnectionId JD.Value
-    | InboundPortError String
+    | InboundPortError ConnectionId String
 
 
 type alias Secret =
@@ -38,7 +38,10 @@ type alias Secret =
 
 
 type alias ProgramConfig =
-    { secret : Secret }
+    { secret : Secret
+    , jsActionTimeout : Time
+    , jsActionCheckInterval : Time
+    }
 
 
 type alias PendingHandlers =
@@ -66,7 +69,7 @@ type HandlerState e a
     | HandlerError e
 
 
-{-| A specific type of HandlerState that must eventually be produced by every endpoint
+{-| A specific type of HandlerState that is passed up to top level and describes an effect
 -}
 type alias EndpointState =
     HandlerState EndpointError JD.Value
