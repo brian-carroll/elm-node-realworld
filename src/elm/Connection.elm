@@ -124,8 +124,8 @@ successResponse json conn =
         }
 
 
-errorResponse : ErrorCode -> List String -> Connection -> Connection
-errorResponse httpStatus errors conn =
+errorResponse : EndpointError -> Connection -> Connection
+errorResponse { status, messages } conn =
     let
         res =
             conn.response
@@ -135,7 +135,7 @@ errorResponse httpStatus errors conn =
                 [ ( "errors"
                   , JE.object
                         [ ( "body"
-                          , JE.list (List.map JE.string errors)
+                          , JE.list (List.map JE.string messages)
                           )
                         ]
                   )
@@ -145,6 +145,6 @@ errorResponse httpStatus errors conn =
             | response =
                 { res
                     | body = JE.encode 0 json
-                    , statusCode = mapHttpStatus httpStatus
+                    , statusCode = mapHttpStatus status
                 }
         }

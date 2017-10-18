@@ -7,6 +7,9 @@ import Routes.Profiles exposing (ProfilesRoute)
 import Routes.Articles exposing (ArticlesRoute)
 import Routes.Tags exposing (TagsRoute)
 import Json.Encode as JE
+import Json.Decode as JD
+import Task exposing (Task)
+import Result
 
 
 type Route
@@ -32,13 +35,13 @@ dispatch : ProgramConfig -> Connection -> HandlerState
 dispatch config conn =
     case parseString urlParser conn.request.url of
         Just (Tags tagsRoute) ->
-            HandlerSuccess JE.null
+            HandlerData JE.null
 
         Just (Profiles profilesRoute) ->
-            HandlerSuccess JE.null
+            HandlerData JE.null
 
         Just (Articles articlesRoute) ->
-            HandlerSuccess JE.null
+            HandlerData JE.null
 
         Just (Users usersRoute) ->
             Routes.Users.dispatch config conn usersRoute

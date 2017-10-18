@@ -62,7 +62,7 @@ update msg state =
         ( { state | pending = pending }, cmd )
 
 
-updateHandlerState : Connection -> PendingHandlers -> HandlerState -> ( PendingHandlers, Cmd Msg )
+updateHandlerState : Connection -> PendingHandlers -> HandlerState EndpointError JD.Value -> ( PendingHandlers, Cmd Msg )
 updateHandlerState conn pendingHandlers handlerState =
     case Debug.log "handlerState" handlerState of
         HandlerSuccess json ->

@@ -335,3 +335,10 @@ Feels like Method should be part of the routing though.
 - Run through a `case` to get a `Cmd`
 - Execute the `Cmd`
 
+## Thoughts on development of the HandlerState monad
+- Interesting how I didn't see at first where the type variables would come in! I was wondering if something could still be a monad if it had a purely concrete type rather than being a typeclass.
+- The key moment was when I came up with the "just pass stuff along" constructor, which used to be HandlerSuccess, restricted to being something you could respond to the client with. Generalised it to HandlerData, added a type variable.
+- Then came the idea of only specifying that datatype at the top level as a special case. Allow any error and data type to go through the pipeline.
+- Spent a while thinking about whether this was really just a Result type and not its own thing at all. (Maybe I could have done that?) Thought about splitting the type in two. An Error type and a Union type for the success types. But since I have a Union type of 3 things for the successes, I might as well chuck the error in there too.
+- I think it's nice that I developed 3 endpoints with purely concrete types first. Got comfortable that I could see the patterns emerging, saw what was not so nice about the code, wrote fake code I wished I had, then abstracted to make it happen. Yay! :)
+- Took me a while to see how it would work. Reading source code of Result and Task helped. Was pretty sure I needed an `andThen` but for a while wondered if it was more like `Result.mapN`.

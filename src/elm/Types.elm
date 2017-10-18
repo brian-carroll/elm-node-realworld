@@ -57,17 +57,31 @@ type Msg
     | CollectGarbage Time
 
 
-type HandlerState
-    = HandlerSuccess JD.Value
-    | HandlerError ErrorCode (List String)
-    | AwaitingPort OutboundPortAction Continuation
-    | AwaitingTask (Task Never HandlerState)
+{-| Wrapper for intermediate values passed along a chain of functions in a handler
+-}
+type HandlerState e a
+    = HandlerData a
+    | AwaitingPort OutboundPortAction (JD.Value -> HandlerState e a)
+    | AwaitingTask (Task Never (HandlerState e a))
+    | HandlerError e
+
+
+{-| A specific type of HandlerState that must eventually be produced by every endpoint
+-}
+type alias EndpointState =
+    HandlerState EndpointError JD.Value
+
+
+type alias EndpointError =
+    { status : ErrorCode
+    , messages : List String
+    }
 
 
 {-| A continuation function. Pick up where we left off after getting a value back from JS
 -}
 type alias Continuation =
-    Connection -> JD.Value -> HandlerState
+    JD.Value -> EndpointState
 
 
 type alias Connection =

@@ -76,27 +76,38 @@ postBulkDocs json =
         decodeDbPostBulkResponse
 
 
-handleDbError : Http.Error -> HandlerState
+handleDbError : Http.Error -> HandlerState EndpointError a
 handleDbError httpError =
     case httpError of
         Http.BadUrl url ->
-            HandlerError NotFound [ url ]
+            HandlerError
+                { status = NotFound
+                , messages = [ url ]
+                }
 
         Http.Timeout ->
-            HandlerError InternalError [ "DB timeout" ]
+            HandlerError
+                { status = InternalError
+                , messages = [ "DB timeout" ]
+                }
 
         Http.NetworkError ->
-            HandlerError InternalError [ "DB network error" ]
+            HandlerError
+                { status = InternalError
+                , messages = [ "DB network error" ]
+                }
 
         Http.BadStatus httpResponse ->
             HandlerError
-                InternalError
-                (mapDbErrors httpResponse.body)
+                { status = InternalError
+                , messages = (mapDbErrors httpResponse.body)
+                }
 
         Http.BadPayload jsonDecoderString httpResponse ->
             HandlerError
-                InternalError
-                (mapDbErrors httpResponse.body)
+                { status = InternalError
+                , messages = (mapDbErrors httpResponse.body)
+                }
 
 
 mapDbErrors : String -> List String

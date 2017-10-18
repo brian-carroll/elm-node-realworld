@@ -8,6 +8,7 @@ import Models.User exposing (..)
 import Task exposing (Task)
 import Database exposing (..)
 import Dict
+import HandlerState exposing (andThen, onError, tryTask, wrapErrString)
 
 
 type UsersRoute
@@ -39,11 +40,14 @@ urlParserUser =
     map CurrentUser top
 
 
-dispatch : ProgramConfig -> Connection -> UsersRoute -> HandlerState
+dispatch : ProgramConfig -> Connection -> UsersRoute -> EndpointState
 dispatch config conn route =
     let
         method =
             conn.request.method
+
+        methodNotAllowedError =
+            HandlerError { status = MethodNotAllowed, messages = [] }
     in
         case route of
             Register ->
@@ -52,7 +56,7 @@ dispatch config conn route =
                         register config.secret conn
 
                     _ ->
-                        HandlerError MethodNotAllowed []
+                        methodNotAllowedError
 
             Login ->
                 case method of
@@ -60,7 +64,7 @@ dispatch config conn route =
                         login config.secret conn
 
                     _ ->
-                        HandlerError MethodNotAllowed []
+                        methodNotAllowedError
 
             CurrentUser ->
                 case method of
@@ -68,10 +72,10 @@ dispatch config conn route =
                         getCurrentUser config.secret conn
 
                     Put ->
-                        HandlerError InternalError []
+                        methodNotAllowedError
 
                     _ ->
-                        HandlerError MethodNotAllowed []
+                        methodNotAllowedError
 
 
 type alias RegistrationFormUser =
@@ -96,22 +100,21 @@ decodeRegistrationForm =
                 (JD.field "password" JD.string)
 
 
-register : Secret -> Connection -> HandlerState
+register : Secret -> Connection -> EndpointState
 register secret conn =
-    JD.decodeString decodeRegistrationForm conn.request.body
-        |> catchError UnprocessableEntity
-            (\regFormData ->
-                AwaitingPort
-                    (HashPassword regFormData.user.password)
-                    (\connection jsHashAndSalt ->
-                        JD.decodeValue decodeHashAndSalt jsHashAndSalt
-                            |> catchError InternalError
-                                (saveNewUser secret regFormData connection)
-                    )
+    HandlerData conn.request.body
+        |> andThen (JD.decodeString decodeRegistrationForm >> HandlerData)
+        |> onError (wrapErrString UnprocessableEntity)
+        |> andThen
+            (\formData ->
+                AwaitingPort (HashPassword formData.user.password) HandlerData
+                    |> andThen (JD.decodeValue decodeHashAndSalt >> HandlerData)
+                    |> onError (wrapErrString InternalError)
+                    |> andThen (saveNewUser secret formData conn)
             )
 
 
-saveNewUser : Secret -> RegistrationForm -> Connection -> HashAndSalt -> HandlerState
+saveNewUser : Secret -> RegistrationForm -> Connection -> HashAndSalt -> EndpointState
 saveNewUser secret regFormData conn hashAndSalt =
     let
         user =
@@ -123,27 +126,21 @@ saveNewUser secret regFormData conn hashAndSalt =
             , hash = hashAndSalt.hash
             , salt = hashAndSalt.salt
             }
-
-        successJson =
-            JE.object
-                [ ( "user", toAuthJSON secret conn.timestamp user ) ]
-
-        dbTask =
-            user
-                |> Models.User.save
-                |> Task.andThen (Task.succeed << onSaveUserSuccess successJson)
-                |> Task.onError (Task.succeed << handleDbError)
     in
-        AwaitingTask dbTask
-
-
-onSaveUserSuccess : JE.Value -> DbPostBulkResponse -> HandlerState
-onSaveUserSuccess successJson dbResponse =
-    if List.all .ok dbResponse then
-        HandlerSuccess successJson
-    else
-        HandlerError InternalError <|
-            List.filterMap .error dbResponse
+        HandlerData user
+            |> tryTask handleDbError Models.User.save
+            |> andThen
+                (\dbResponse ->
+                    if List.all .ok dbResponse then
+                        HandlerData <|
+                            JE.object
+                                [ ( "user", toAuthJSON secret conn.timestamp user ) ]
+                    else
+                        HandlerError
+                            { status = InternalError
+                            , messages = List.filterMap .error dbResponse
+                            }
+                )
 
 
 type alias LoginForm =
@@ -170,106 +167,71 @@ decodeLoginFormUser =
         (JD.field "password" JD.string)
 
 
-login : Secret -> Connection -> HandlerState
+login : Secret -> Connection -> EndpointState
 login secret conn =
-    let
-        _ =
-            Debug.log "Executing handler" "login"
-
-        validateInput : HandlerState
-        validateInput =
-            conn.request.body
-                |> JD.decodeString decodeLoginForm
-                |> catchError UnprocessableEntity
-                    (\formData -> fetchUserFromDb formData)
-
-        fetchUserFromDb : LoginForm -> HandlerState
-        fetchUserFromDb formData =
-            AwaitingTask
-                (Models.User.findByEmail (formData.user.email)
-                    |> Task.andThen (Task.succeed << checkPassword formData.user.password)
-                    |> Task.onError (Task.succeed << handleDbError)
-                )
-
-        checkPassword : String -> User -> HandlerState
-        checkPassword formPassword user =
-            AwaitingPort
-                (CheckPassword { hash = user.hash, salt = user.salt, plainText = formPassword })
-                (loginResponse user)
-
-        loginResponse : User -> Connection -> JD.Value -> HandlerState
-        loginResponse user conn jsData =
-            JD.decodeValue (JD.field "passwordIsValid" JD.bool) jsData
-                |> catchError InternalError
-                    (\isValid ->
-                        if isValid then
-                            HandlerSuccess <|
-                                JE.object
-                                    [ ( "user", toAuthJSON secret conn.timestamp user ) ]
-                        else
-                            HandlerError Unauthorized [ "Wrong username or password" ]
-                    )
-    in
-        validateInput
+    HandlerData conn.request.body
+        |> andThen (JD.decodeString decodeLoginForm >> HandlerData)
+        |> onError (wrapErrString UnprocessableEntity)
+        |> andThen
+            (\formData ->
+                HandlerData formData.user.email
+                    |> tryTask handleDbError Models.User.findByEmail
+                    |> andThen
+                        (\user ->
+                            AwaitingPort
+                                (CheckPassword
+                                    { hash = user.hash
+                                    , salt = user.salt
+                                    , plainText = formData.user.password
+                                    }
+                                )
+                                HandlerData
+                                |> andThen (JD.decodeValue (JD.field "passwordIsValid" JD.bool) >> HandlerData)
+                                |> onError (wrapErrString InternalError)
+                                |> andThen
+                                    (\isValid ->
+                                        if isValid then
+                                            HandlerData <|
+                                                JE.object
+                                                    [ ( "user", toAuthJSON secret conn.timestamp user ) ]
+                                        else
+                                            HandlerError
+                                                { status = Unauthorized
+                                                , messages = [ "Wrong username or password" ]
+                                                }
+                                    )
+                        )
+            )
 
 
-requireAuth : Secret -> Connection -> Result String JwtPayload
+requireAuth : Secret -> Connection -> HandlerState EndpointError JwtPayload
 requireAuth secret conn =
     case Dict.get "authorization" conn.request.headers of
         Just auth ->
             case String.words auth of
                 [ "Token", token ] ->
-                    verifyJWT secret conn.timestamp token
+                    HandlerData token
+                        |> andThen (verifyJWT secret conn.timestamp >> HandlerData)
+                        |> onError (wrapErrString Unauthorized)
 
                 _ ->
-                    Err "Invalid token"
+                    wrapErrString Unauthorized "Invalid token"
 
         Nothing ->
-            let
-                headersJsonString =
-                    conn.request.headers
-                        |> Dict.map (\k v -> JE.string v)
-                        |> Dict.toList
-                        |> JE.object
-                        |> JE.encode 2
-            in
-                Err ("Authorization token not found in " ++ headersJsonString)
+            wrapErrString Unauthorized "Authorization token not found"
 
 
-getCurrentUser : Secret -> Connection -> HandlerState
+getCurrentUser : Secret -> Connection -> EndpointState
 getCurrentUser secret conn =
-    let
-        validateInput : HandlerState
-        validateInput =
-            requireAuth secret conn
-                |> catchError Unauthorized
-                    (\jwtPayload -> getUserDoc jwtPayload.username)
-
-        getUserDoc : Username -> HandlerState
-        getUserDoc username =
-            AwaitingTask
-                (findByUsername username
-                    |> Task.andThen (Task.succeed << generateResponse)
-                    |> Task.onError (Task.succeed << handleDbError)
-                )
-
-        generateResponse : User -> HandlerState
-        generateResponse user =
-            HandlerSuccess <|
-                JE.object <|
-                    [ ( "user"
-                      , toAuthJSON secret conn.timestamp user
-                      )
-                    ]
-    in
-        validateInput
-
-
-catchError : ErrorCode -> (a -> HandlerState) -> Result String a -> HandlerState
-catchError errorCode onSuccess result =
-    case result of
-        Ok data ->
-            onSuccess data
-
-        Err str ->
-            HandlerError errorCode [ str ]
+    requireAuth secret conn
+        |> andThen (.username >> HandlerData)
+        |> tryTask handleDbError findByUsername
+        |> andThen
+            (\user ->
+                HandlerData <|
+                    JE.object <|
+                        [ ( "user"
+                          , toAuthJSON secret conn.timestamp user
+                          )
+                        ]
+            )

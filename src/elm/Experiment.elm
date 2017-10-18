@@ -5,6 +5,7 @@ import Dict exposing (Dict)
 import Time exposing (Time)
 import Task exposing (Task)
 import Result
+import Http
 
 
 type alias ConnectionId =
@@ -131,6 +132,27 @@ type HandlerState e a
     | HandlerError e
 
 
+type alias EndpointState =
+    HandlerState EndpointError JD.Value
+
+
+type alias EndpointError =
+    { status : ErrorCode
+    , messages : List String
+    }
+
+
+handleDbError : Http.Error -> HandlerState EndpointError a
+handleDbError err =
+    HandlerError { status = InternalError, messages = [ "" ] }
+
+
+makeHttpCall : Float -> Task Http.Error Int
+makeHttpCall float =
+    Http.get ("http://www.example.com/api/rounding" ++ toString float) JD.int
+        |> Http.toTask
+
+
 andThen : (a -> HandlerState x b) -> HandlerState x a -> HandlerState x b
 andThen nextStage state =
     case state of
@@ -187,6 +209,25 @@ try f liftError state =
 
         AwaitingTask task ->
             AwaitingTask (task |> Task.map (try f liftError))
+
+
+tryTask : (x -> HandlerState y b) -> (a -> Task x b) -> HandlerState y a -> HandlerState y b
+tryTask liftError createTask state =
+    case state of
+        HandlerError e ->
+            HandlerError e
+
+        HandlerData data ->
+            createTask data
+                |> Task.map HandlerData
+                |> Task.onError (\e -> Task.succeed (liftError e))
+                |> AwaitingTask
+
+        AwaitingPort outboundPortAction continuation ->
+            AwaitingPort outboundPortAction (continuation >> tryTask liftError createTask)
+
+        AwaitingTask task ->
+            AwaitingTask (task |> Task.map (tryTask liftError createTask))
 
 
 exitWith errCode errString =
