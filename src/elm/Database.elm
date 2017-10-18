@@ -117,4 +117,4 @@ mapDbErrors errorBody =
             messages
 
         Err _ ->
-            [ "Unknown DB error" ]
+            [ errorBody ]

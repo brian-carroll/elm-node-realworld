@@ -5,7 +5,6 @@ import Types exposing (..)
 import Json.Decode as JD
 import Json.Encode as JE
 import Models.User exposing (..)
-import Task exposing (Task)
 import Database exposing (..)
 import Dict
 import HandlerState exposing (andThen, onError, tryTask, wrapErrString)
@@ -72,7 +71,7 @@ dispatch config conn route =
                         getCurrentUser config.secret conn
 
                     Put ->
-                        methodNotAllowedError
+                        putCurrentUser config.secret conn
 
                     _ ->
                         methodNotAllowedError
@@ -110,37 +109,39 @@ register secret conn =
                 AwaitingPort (HashPassword formData.user.password) HandlerData
                     |> andThen (JD.decodeValue decodeHashAndSalt >> HandlerData)
                     |> onError (wrapErrString InternalError)
-                    |> andThen (saveNewUser secret formData conn)
+                    |> andThen
+                        (\hashAndSalt ->
+                            saveUser
+                                secret
+                                conn
+                                { rev = Nothing
+                                , username = formData.user.username
+                                , email = formData.user.email
+                                , bio = ""
+                                , image = ""
+                                , hash = hashAndSalt.hash
+                                , salt = hashAndSalt.salt
+                                }
+                        )
             )
 
 
-saveNewUser : Secret -> RegistrationForm -> Connection -> HashAndSalt -> EndpointState
-saveNewUser secret regFormData conn hashAndSalt =
-    let
-        user =
-            { rev = Nothing
-            , username = regFormData.user.username
-            , email = regFormData.user.email
-            , bio = ""
-            , image = ""
-            , hash = hashAndSalt.hash
-            , salt = hashAndSalt.salt
-            }
-    in
-        HandlerData user
-            |> tryTask handleDbError Models.User.save
-            |> andThen
-                (\dbResponse ->
-                    if List.all .ok dbResponse then
-                        HandlerData <|
-                            JE.object
-                                [ ( "user", toAuthJSON secret conn.timestamp user ) ]
-                    else
-                        HandlerError
-                            { status = InternalError
-                            , messages = List.filterMap .error dbResponse
-                            }
-                )
+saveUser : Secret -> Connection -> User -> EndpointState
+saveUser secret conn user =
+    HandlerData user
+        |> tryTask handleDbError Models.User.save
+        |> andThen
+            (\dbResponse ->
+                if List.all .ok dbResponse then
+                    HandlerData <|
+                        JE.object
+                            [ ( "user", toAuthJSON secret conn.timestamp user ) ]
+                else
+                    HandlerError
+                        { status = InternalError
+                        , messages = List.filterMap .error dbResponse
+                        }
+            )
 
 
 type alias LoginForm =
@@ -235,3 +236,71 @@ getCurrentUser secret conn =
                           )
                         ]
             )
+
+
+type alias PutUserForm =
+    { username : Maybe Username
+    , email : Maybe Email
+    , bio : Maybe String
+    , image : Maybe String
+    , password : Maybe String
+    }
+
+
+putUserFormDecoder : JD.Decoder PutUserForm
+putUserFormDecoder =
+    JD.field "user" <|
+        JD.map5 PutUserForm
+            (JD.maybe (JD.field "username" decodeUsername))
+            (JD.maybe (JD.field "email" decodeEmail))
+            (JD.maybe (JD.field "bio" JD.string))
+            (JD.maybe (JD.field "image" JD.string))
+            (JD.maybe (JD.field "password" JD.string))
+
+
+putCurrentUser : Secret -> Connection -> EndpointState
+putCurrentUser secret conn =
+    requireAuth secret conn
+        |> andThen (.username >> HandlerData)
+        |> andThen
+            (\username ->
+                HandlerData conn.request.body
+                    |> andThen (JD.decodeString putUserFormDecoder >> HandlerData)
+                    |> onError (wrapErrString UnprocessableEntity)
+                    |> andThen
+                        (\formUser ->
+                            HandlerData username
+                                |> tryTask handleDbError findByUsername
+                                |> andThen (mergeUserData secret formUser)
+                                |> andThen (saveUser secret conn)
+                        )
+            )
+
+
+mergeUserData : Secret -> PutUserForm -> User -> HandlerState EndpointError User
+mergeUserData secret formUser dbUser =
+    let
+        hashAndSalt =
+            case formUser.password of
+                Nothing ->
+                    HandlerData
+                        { hash = dbUser.hash, salt = dbUser.salt }
+
+                Just plainText ->
+                    AwaitingPort (HashPassword plainText) HandlerData
+                        |> andThen (JD.decodeValue decodeHashAndSalt >> HandlerData)
+                        |> onError (wrapErrString InternalError)
+    in
+        hashAndSalt
+            |> andThen
+                (\hs ->
+                    HandlerData
+                        { dbUser
+                            | username = Maybe.withDefault dbUser.username formUser.username
+                            , email = Maybe.withDefault dbUser.email formUser.email
+                            , bio = Maybe.withDefault dbUser.bio formUser.bio
+                            , image = Maybe.withDefault dbUser.image formUser.image
+                            , hash = hs.hash
+                            , salt = hs.salt
+                        }
+                )

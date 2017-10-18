@@ -99,26 +99,34 @@ toDatabaseJSON user =
                 Username str ->
                     JE.string <| "user:" ++ str
     in
-        JE.object
-            [ ( "docs"
-              , JE.list
-                    [ JE.object
-                        [ ( "_id", emailId )
-                        , ( "type", JE.string "Email" )
-                        , ( "user", userId )
+        Debug.log "databaseJSON" <|
+            JE.object
+                [ ( "docs"
+                  , JE.list
+                        [ JE.object
+                            [ ( "_id", emailId )
+                            , ( "type", JE.string "Email" )
+                            , ( "user", userId )
+                            ]
+                        , JE.object <|
+                            (case user.rev of
+                                Nothing ->
+                                    []
+
+                                Just rev ->
+                                    [ ( "_rev", JE.string rev ) ]
+                            )
+                                ++ [ ( "_id", userId )
+                                   , ( "type", JE.string "User" )
+                                   , ( "email", encodeEmail user.email )
+                                   , ( "bio", JE.string user.bio )
+                                   , ( "image", JE.string user.image )
+                                   , ( "hash", JE.string user.hash )
+                                   , ( "salt", JE.string user.salt )
+                                   ]
                         ]
-                    , JE.object
-                        [ ( "_id", userId )
-                        , ( "type", JE.string "User" )
-                        , ( "email", encodeEmail user.email )
-                        , ( "bio", JE.string user.bio )
-                        , ( "image", JE.string user.image )
-                        , ( "hash", JE.string user.hash )
-                        , ( "salt", JE.string user.salt )
-                        ]
-                    ]
-              )
-            ]
+                  )
+                ]
 
 
 dbUserDocDecoder : Decoder User
@@ -180,7 +188,7 @@ findByUsername username =
                     "user:" ++ str
 
         url =
-            Debug.log "user url" <|
+            Debug.log "findByUsername" <|
                 Database.dbUrl
                     ++ "/"
                     ++ usernameId
