@@ -53,7 +53,7 @@ type alias State =
 
 type Msg
     = ReceiveFromJs JsInterface
-    | HandlerTaskResult Connection HandlerState
+    | HandlerTaskResult Connection EndpointState
     | CollectGarbage Time
 
 

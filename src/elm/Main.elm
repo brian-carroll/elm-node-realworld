@@ -65,16 +65,16 @@ update msg state =
 updateHandlerState : Connection -> PendingHandlers -> HandlerState EndpointError JD.Value -> ( PendingHandlers, Cmd Msg )
 updateHandlerState conn pendingHandlers handlerState =
     case Debug.log "handlerState" handlerState of
-        HandlerSuccess json ->
+        HandlerData json ->
             ( pendingHandlers
             , jsActionCmd RespondToClient <|
                 successResponse json conn
             )
 
-        HandlerError httpStatus errors ->
+        HandlerError endpointError ->
             ( pendingHandlers
             , jsActionCmd RespondToClient <|
-                errorResponse httpStatus errors conn
+                errorResponse endpointError conn
             )
 
         AwaitingPort outboundPortAction continuation ->
@@ -92,14 +92,13 @@ updateJsData : State -> JsInterface -> ( PendingHandlers, Cmd Msg )
 updateJsData state jsData =
     case decodeDataFromJs jsData of
         NewConnection conn ->
-            -- TODO: routing
             (Routes.dispatch state.config conn)
                 |> updateHandlerState conn state.pending
 
         JsActionResult connId jsValue ->
             case Dict.get connId state.pending of
                 Just ( connection, continueWith ) ->
-                    continueWith connection jsValue
+                    continueWith jsValue
                         |> updateHandlerState
                             connection
                             (Dict.remove connId state.pending)
@@ -186,4 +185,8 @@ updateGarbageCollection pending now =
 dumpPendingHandler : ( Connection, a ) -> Cmd Msg
 dumpPendingHandler ( conn, _ ) =
     jsActionCmd RespondToClient <|
-        errorResponse InternalError [ "JS timeout" ] conn
+        errorResponse
+            { status = InternalError
+            , messages = [ "JS timeout" ]
+            }
+            conn
