@@ -23,14 +23,9 @@ andThen nextStage state =
         AwaitingPort outboundPortAction continuation ->
             AwaitingPort outboundPortAction (continuation >> andThen nextStage)
 
-        --b
         AwaitingTask task ->
             AwaitingTask
                 (task |> Task.map (andThen nextStage))
-
-
-
---a
 
 
 {-| Deal with a Result from a previous stage in the pipeline
@@ -83,8 +78,71 @@ wrapErrString errCode message =
     HandlerError { status = errCode, messages = [ message ] }
 
 
-fromJson : JD.Decoder a -> ErrorCode -> HandlerState EndpointError JD.Value -> HandlerState EndpointError a
-fromJson decoder errCode jsonHandlerData =
+fromJson : ErrorCode -> JD.Decoder a -> HandlerState EndpointError JD.Value -> HandlerState EndpointError a
+fromJson errCode decoder jsonHandlerData =
     jsonHandlerData
         |> andThen (JD.decodeValue decoder >> HandlerData)
         |> onError (wrapErrString errCode)
+
+
+{-| map2 : (a -> b -> HandlerState x c) -> HandlerState x a -> HandlerState x b -> HandlerState x c
+
+Create a HandlerState from two other HandlerStates, after unwrapping the data from each of them.
+
+This is handy for breaking code into chunks and combine them back together again. It means we don't
+always have to use a single sequential chain. Code ends up being nicer and more readable.
+
+The arguments to the function are evaluated in order.
+
+Example:
+
+    loginFormData : HandlerState x a
+    loginFormData =
+        -- JSON validation that might fail
+
+    userDataFromDb : HandlerState x b
+    userDataFromDb =
+        -- Result of some port or task
+
+    loginUser : a -> b -> HandlerState x c
+    loginUser formData dbData =
+        -- do something with both pieces of data and create a response
+
+    -- combine it all together
+    response =
+        map2 loginUser loginFormData userDataFromDb
+
+-}
+map2 : (a -> b -> HandlerState x c) -> HandlerState x a -> HandlerState x b -> HandlerState x c
+map2 f a b =
+    case a of
+        HandlerData da ->
+            b |> andThen (f da)
+
+        HandlerError x ->
+            HandlerError x
+
+        AwaitingPort action cont ->
+            AwaitingPort action (cont >> (\hs -> map2 f hs b))
+
+        AwaitingTask task ->
+            AwaitingTask (task |> Task.andThen (\hs -> Task.succeed (map2 f hs b)))
+
+
+{-| map3 : (a -> b -> c -> HandlerState x d) -> HandlerState x a -> HandlerState x b -> HandlerState x c -> HandlerState x d
+Same kind of thing as map2. Surprise!
+-}
+map3 : (a -> b -> c -> HandlerState x d) -> HandlerState x a -> HandlerState x b -> HandlerState x c -> HandlerState x d
+map3 f a b c =
+    case a of
+        HandlerData da ->
+            map2 (f da) b c
+
+        HandlerError x ->
+            HandlerError x
+
+        AwaitingPort action cont ->
+            AwaitingPort action (cont >> (\hs -> map3 f hs b c))
+
+        AwaitingTask task ->
+            AwaitingTask (task |> Task.andThen (\hs -> Task.succeed (map3 f hs b c)))

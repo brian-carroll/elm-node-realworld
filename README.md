@@ -342,3 +342,25 @@ Feels like Method should be part of the routing though.
 - Spent a while thinking about whether this was really just a Result type and not its own thing at all. (Maybe I could have done that?) Thought about splitting the type in two. An Error type and a Union type for the success types. But since I have a Union type of 3 things for the successes, I might as well chuck the error in there too.
 - I think it's nice that I developed 3 endpoints with purely concrete types first. Got comfortable that I could see the patterns emerging, saw what was not so nice about the code, wrote fake code I wished I had, then abstracted to make it happen. Yay! :)
 - Took me a while to see how it would work. Reading source code of Result and Task helped. Was pretty sure I needed an `andThen` but for a while wondered if it was more like `Result.mapN`.
+
+
+## What next?
+- CouchDB
+    - Hmmm... not sure I like it!
+    - You have to do all the atomicity stuff yourself, check for changes, compose and decompose the docs for a model...
+    - Uniqueness is a total hack
+    - Could try to get my head around it and see it as a challenge. Would be kind of good to learn about NoSQL.
+    - On the other hand it literally solves no problems for me.
+    - Raises the question - If I don't like the framework why am I creating it?
+- SQL
+    - Use Node Postgres or similar. Something that's not an ORM. Probably low-level and close to the SQL.
+    - SQL seems more fitting with the whole Elm safety thing. And logic and declarativeness and all that.
+    - Involves lots more JS interop, but I've sort of solved the main hurdles there.
+    - Creating statements
+        - Parameterised statements make things simpler. Postgres can do the SQL injection escaping stuff.
+    - Interpreting results
+        - Not sure how this works. Needs to be parsed at some point. Probably happens in Node.
+- Monads and stuff
+    - Try to get rid of the big indentation pyramids.
+    - Can just split things into smaller functions. No big deal.
+    - Or could try to implement something like `Result.map2`. Would be nice to be able to combine subexpressions more easily. And interesting!
