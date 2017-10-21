@@ -1,0 +1,9 @@
+Follow,User,Article,Favourite,Comment,ArticleTag,Tag
+follower_id,id,id,user_id,id,tag_id,id
+followed_id,username,author_id,article_id,user_id,article_id,name
+,email,slug,,article_id,,
+,bio,title,,body,,
+,image,description,,createdAt,,
+,hash,body,,updatedAt,,
+,salt,createdAt,,,,
+,,updatedAt,,,,
