@@ -33,7 +33,7 @@ If the Result is an `Ok`, turn it into a `HandlerData`
 If the Result is an `Err`, turn it into a `HandlerError`, using the supplied function
 -}
 onError : (y -> HandlerState x a) -> HandlerState x (Result y a) -> HandlerState x a
-onError wrapError state =
+onError mapError state =
     case state of
         HandlerError e ->
             HandlerError e
@@ -44,18 +44,75 @@ onError wrapError state =
                     HandlerData data
 
                 Err e ->
-                    wrapError e
+                    mapError e
 
         AwaitingPort outboundPortAction continuation ->
-            AwaitingPort outboundPortAction (continuation >> onError wrapError)
+            AwaitingPort outboundPortAction (continuation >> onError mapError)
 
         AwaitingTask task ->
             AwaitingTask
-                (task |> Task.map (onError wrapError))
+                (task |> Task.map (onError mapError))
 
 
+{-| Try a computation that may fail (i.e. returns a Result), as part of a handler pipeline.
+As the first argument, provide a function to transform the `Err` into a `HandlerError`
+
+    import Json.Decode as JD
+
+    HandlerData """{ "hello": "world" }"""
+        |> try HandlerError (HandlerData << JD.decodeString (JD.field "hello" JD.string))
+
+This is equivalent to
+
+    import Json.Decode as JD
+
+    HandlerData """{ "hello": "world" }"""
+        |> andThen (HandlerData << JD.decodeString (JD.field "hello" JD.string))
+        |> onError HandlerError
+
+-}
+try : (x -> HandlerState y b) -> (a -> Result x b) -> HandlerState y a -> HandlerState y b
+try mapError f state =
+    case state of
+        HandlerError e ->
+            HandlerError e
+
+        HandlerData data ->
+            case f data of
+                Ok r ->
+                    HandlerData r
+
+                Err e ->
+                    mapError e
+
+        AwaitingPort outboundPortAction continuation ->
+            AwaitingPort outboundPortAction (continuation >> try mapError f)
+
+        AwaitingTask task ->
+            AwaitingTask (task |> Task.map (try mapError f))
+
+
+{-| Insert a Task into a pipeline
+
+Example:
+
+    userDecoder : Json.Decode.Decoder User
+
+    fetchUser : String -> Task.Task
+    fetchUser username =
+        Http.get ("https://api.example.com/user/" ++ username) userDecoder
+            |> Http.toTask
+
+    pipeline : HandlerState Http.Error User
+    pipeline =
+        HandlerData "brian"
+            |> tryTask HandlerError fetchUser
+
+There is no equivalent of `onError` for `Task`s. It's better to handle success and error in one step.
+
+-}
 tryTask : (x -> HandlerState y b) -> (a -> Task x b) -> HandlerState y a -> HandlerState y b
-tryTask liftError createTask state =
+tryTask mapError createTask state =
     case state of
         HandlerError e ->
             HandlerError e
@@ -63,14 +120,14 @@ tryTask liftError createTask state =
         HandlerData data ->
             createTask data
                 |> Task.map HandlerData
-                |> Task.onError (\e -> Task.succeed (liftError e))
+                |> Task.onError (\e -> Task.succeed (mapError e))
                 |> AwaitingTask
 
         AwaitingPort outboundPortAction continuation ->
-            AwaitingPort outboundPortAction (continuation >> tryTask liftError createTask)
+            AwaitingPort outboundPortAction (continuation >> tryTask mapError createTask)
 
         AwaitingTask task ->
-            AwaitingTask (task |> Task.map (tryTask liftError createTask))
+            AwaitingTask (task |> Task.map (tryTask mapError createTask))
 
 
 wrapErrString : ErrorCode -> String -> HandlerState EndpointError a
@@ -85,32 +142,34 @@ fromJson errCode decoder jsonHandlerData =
         |> onError (wrapErrString errCode)
 
 
-{-| map2 : (a -> b -> HandlerState x c) -> HandlerState x a -> HandlerState x b -> HandlerState x c
+{-| Create a `HandlerState` from two other `HandlerState`s, after unwrapping the data from each of them.
 
-Create a HandlerState from two other HandlerStates, after unwrapping the data from each of them.
+Example:
+
+    -- Hash a password by calling out to a JS crypto library
+    jsHashPassword : String -> HandlerState x PasswordHash
+    jsHashPassword plainText =
+        AwaitingPort (HashPassword plainText) (JD.decodeValue hashDecoder)
+
+    -- Fetch the user data from a remote DB server using HTTP
+    userDataFromDb : Int -> HandlerState x User
+    userDataFromDb userId =
+        AwaitingTask (fetchUserTask userId)
+
+    -- Function that logs in a User, given a password hash
+    -- The function operates on plain data, but we only have HandlerStates!
+    loginUser : PasswordHash -> User -> HandlerState x LoginResponse
+    loginUser hashedPassword dbUser =
+        -- do stuff
+
+    -- Use map2 to apply the loginUser function
+    response =
+        map2 loginUser loginFormData userDataFromDb
 
 This is handy for breaking code into chunks and combine them back together again. It means we don't
 always have to use a single sequential chain. Code ends up being nicer and more readable.
 
 The arguments to the function are evaluated in order.
-
-Example:
-
-    loginFormData : HandlerState x a
-    loginFormData =
-        -- JSON validation that might fail
-
-    userDataFromDb : HandlerState x b
-    userDataFromDb =
-        -- Result of some port or task
-
-    loginUser : a -> b -> HandlerState x c
-    loginUser formData dbData =
-        -- do something with both pieces of data and create a response
-
-    -- combine it all together
-    response =
-        map2 loginUser loginFormData userDataFromDb
 
 -}
 map2 : (a -> b -> HandlerState x c) -> HandlerState x a -> HandlerState x b -> HandlerState x c

@@ -185,7 +185,7 @@ decodeDataFromJs jsData =
 
 
 {-| Send an action to JavaScript `port`
-Choices are deliberately limited, defined using Elm types. But easily extensible.
+Choices are deliberately limited, defined using Elm types, but easily extensible.
 Structure inspired by Murphy Randle's talk from Elm Conf US 2017
 Use Node for crypto - it's fast optimised C code, tested by tons of folks.
 -}

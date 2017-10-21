@@ -7,23 +7,13 @@ import Json.Encode as JE
 import Models.User exposing (..)
 import Database exposing (..)
 import Dict
-import HandlerState exposing (andThen, onError, tryTask, wrapErrString)
+import HandlerState exposing (andThen, onError, tryTask, wrapErrString, map2)
 
 
 type UsersRoute
     = Register
     | Login
     | CurrentUser
-
-
-
-{-
-   post  '/users'    -- create new user
-   post  '/users/login'
-
-   get  '/user'  auth.required   -- return most fields
-   put  '/user'  auth.required   -- modify
--}
 
 
 urlParserUsers : Parser (UsersRoute -> parserState) parserState
@@ -77,53 +67,53 @@ dispatch config conn route =
                         methodNotAllowedError
 
 
-type alias RegistrationFormUser =
+type alias RegistrationForm =
     { username : Username
     , email : Email
     , password : String
     }
 
 
-type alias RegistrationForm =
-    { user : RegistrationFormUser }
-
-
 decodeRegistrationForm : JD.Decoder RegistrationForm
 decodeRegistrationForm =
-    JD.map RegistrationForm <|
-        JD.field "user" <|
-            JD.map3
-                RegistrationFormUser
-                (JD.field "username" decodeUsername)
-                (JD.field "email" decodeEmail)
-                (JD.field "password" JD.string)
+    JD.field "user" <|
+        JD.map3
+            RegistrationForm
+            (JD.field "username" decodeUsername)
+            (JD.field "email" decodeEmail)
+            (JD.field "password" JD.string)
 
 
 register : Secret -> Connection -> EndpointState
 register secret conn =
-    HandlerData conn.request.body
-        |> andThen (JD.decodeString decodeRegistrationForm >> HandlerData)
-        |> onError (wrapErrString UnprocessableEntity)
-        |> andThen
-            (\formData ->
-                AwaitingPort (HashPassword formData.user.password) HandlerData
-                    |> andThen (JD.decodeValue decodeHashAndSalt >> HandlerData)
-                    |> onError (wrapErrString InternalError)
-                    |> andThen
-                        (\hashAndSalt ->
-                            saveUser
-                                secret
-                                conn
-                                { rev = Nothing
-                                , username = formData.user.username
-                                , email = formData.user.email
-                                , bio = ""
-                                , image = ""
-                                , hash = hashAndSalt.hash
-                                , salt = hashAndSalt.salt
-                                }
-                        )
-            )
+    let
+        formData =
+            HandlerData conn.request.body
+                |> andThen (JD.decodeString decodeRegistrationForm >> HandlerData)
+                |> onError (wrapErrString UnprocessableEntity)
+
+        hashAndSalt =
+            formData
+                |> andThen
+                    (\form ->
+                        AwaitingPort (HashPassword form.password) HandlerData
+                            |> andThen (JD.decodeValue decodeHashAndSalt >> HandlerData)
+                            |> onError (wrapErrString InternalError)
+                    )
+
+        userDoc formData hashAndSalt =
+            HandlerData
+                { rev = Nothing
+                , username = formData.username
+                , email = formData.email
+                , bio = ""
+                , image = ""
+                , hash = hashAndSalt.hash
+                , salt = hashAndSalt.salt
+                }
+    in
+        map2 userDoc formData hashAndSalt
+            |> andThen (saveUser secret conn)
 
 
 saveUser : Secret -> Connection -> User -> EndpointState
@@ -145,11 +135,6 @@ saveUser secret conn user =
 
 
 type alias LoginForm =
-    { user : LoginFormUser
-    }
-
-
-type alias LoginFormUser =
     { email : Email
     , password : String
     }
@@ -157,57 +142,58 @@ type alias LoginFormUser =
 
 decodeLoginForm : JD.Decoder LoginForm
 decodeLoginForm =
-    JD.map LoginForm
-        (JD.field "user" decodeLoginFormUser)
-
-
-decodeLoginFormUser : JD.Decoder LoginFormUser
-decodeLoginFormUser =
-    JD.map2 LoginFormUser
-        (JD.field "email" Models.User.decodeEmail)
-        (JD.field "password" JD.string)
+    JD.field "user" <|
+        JD.map2
+            LoginForm
+            (JD.field "email" Models.User.decodeEmail)
+            (JD.field "password" JD.string)
 
 
 login : Secret -> Connection -> EndpointState
 login secret conn =
-    HandlerData conn.request.body
-        |> andThen (JD.decodeString decodeLoginForm >> HandlerData)
-        |> onError (wrapErrString UnprocessableEntity)
-        |> andThen
-            (\formData ->
-                HandlerData formData.user.email
-                    |> tryTask handleDbError Models.User.findByEmail
-                    |> andThen
-                        (\user ->
-                            AwaitingPort
-                                (CheckPassword
-                                    { hash = user.hash
-                                    , salt = user.salt
-                                    , plainText = formData.user.password
-                                    }
-                                )
-                                HandlerData
-                                |> andThen (JD.decodeValue (JD.field "passwordIsValid" JD.bool) >> HandlerData)
-                                |> onError (wrapErrString InternalError)
-                                |> andThen
-                                    (\isValid ->
-                                        if isValid then
-                                            HandlerData <|
-                                                JE.object
-                                                    [ ( "user", toAuthJSON secret conn.timestamp user ) ]
-                                        else
-                                            HandlerError
-                                                { status = Unauthorized
-                                                , messages = [ "Wrong username or password" ]
-                                                }
-                                    )
-                        )
-            )
+    let
+        formData =
+            HandlerData conn.request.body
+                |> andThen (JD.decodeString decodeLoginForm >> HandlerData)
+                |> onError (wrapErrString UnprocessableEntity)
+
+        user =
+            formData
+                |> andThen (.email >> HandlerData)
+                |> tryTask handleDbError Models.User.findByEmail
+
+        passwordIsValid formData user =
+            AwaitingPort
+                (CheckPassword
+                    { hash = user.hash
+                    , salt = user.salt
+                    , plainText = formData.password
+                    }
+                )
+                (JD.decodeValue (JD.field "passwordIsValid" JD.bool) >> HandlerData)
+                |> onError (wrapErrString InternalError)
+
+        generateResponse user isValid =
+            if isValid then
+                HandlerData <|
+                    JE.object
+                        [ ( "user", toAuthJSON secret conn.timestamp user ) ]
+            else
+                HandlerError
+                    { status = Unauthorized
+                    , messages = [ "Wrong username or password" ]
+                    }
+    in
+        map2 passwordIsValid formData user
+            |> map2 generateResponse user
 
 
 requireAuth : Secret -> Connection -> HandlerState EndpointError JwtPayload
 requireAuth secret conn =
     case Dict.get "authorization" conn.request.headers of
+        Nothing ->
+            wrapErrString Unauthorized "Authorization header required"
+
         Just auth ->
             case String.words auth of
                 [ "Token", token ] ->
@@ -217,9 +203,6 @@ requireAuth secret conn =
 
                 _ ->
                     wrapErrString Unauthorized "Invalid token"
-
-        Nothing ->
-            wrapErrString Unauthorized "Authorization token not found"
 
 
 getCurrentUser : Secret -> Connection -> EndpointState
@@ -260,47 +243,43 @@ putUserFormDecoder =
 
 putCurrentUser : Secret -> Connection -> EndpointState
 putCurrentUser secret conn =
-    requireAuth secret conn
-        |> andThen (.username >> HandlerData)
-        |> andThen
-            (\username ->
-                HandlerData conn.request.body
-                    |> andThen (JD.decodeString putUserFormDecoder >> HandlerData)
-                    |> onError (wrapErrString UnprocessableEntity)
-                    |> andThen
-                        (\formUser ->
-                            HandlerData username
-                                |> tryTask handleDbError findByUsername
-                                |> andThen (mergeUserData secret formUser)
-                                |> andThen (saveUser secret conn)
-                        )
-            )
+    let
+        username =
+            requireAuth secret conn
+                |> andThen (.username >> HandlerData)
+
+        formUser =
+            HandlerData conn.request.body
+                |> andThen (JD.decodeString putUserFormDecoder >> HandlerData)
+                |> onError (wrapErrString UnprocessableEntity)
+    in
+        username
+            |> tryTask handleDbError findByUsername
+            |> map2 (mergeUserData secret) formUser
+            |> andThen (saveUser secret conn)
 
 
 mergeUserData : Secret -> PutUserForm -> User -> HandlerState EndpointError User
 mergeUserData secret formUser dbUser =
-    let
-        hashAndSalt =
-            case formUser.password of
-                Nothing ->
-                    HandlerData
-                        { hash = dbUser.hash, salt = dbUser.salt }
+    (case formUser.password of
+        Nothing ->
+            HandlerData
+                { hash = dbUser.hash, salt = dbUser.salt }
 
-                Just plainText ->
-                    AwaitingPort (HashPassword plainText) HandlerData
-                        |> andThen (JD.decodeValue decodeHashAndSalt >> HandlerData)
-                        |> onError (wrapErrString InternalError)
-    in
-        hashAndSalt
-            |> andThen
-                (\hs ->
-                    HandlerData
-                        { dbUser
-                            | username = Maybe.withDefault dbUser.username formUser.username
-                            , email = Maybe.withDefault dbUser.email formUser.email
-                            , bio = Maybe.withDefault dbUser.bio formUser.bio
-                            , image = Maybe.withDefault dbUser.image formUser.image
-                            , hash = hs.hash
-                            , salt = hs.salt
-                        }
-                )
+        Just plainText ->
+            AwaitingPort (HashPassword plainText) HandlerData
+                |> andThen (JD.decodeValue decodeHashAndSalt >> HandlerData)
+                |> onError (wrapErrString InternalError)
+    )
+        |> andThen
+            (\hs ->
+                HandlerData
+                    { dbUser
+                        | username = Maybe.withDefault dbUser.username formUser.username
+                        , email = Maybe.withDefault dbUser.email formUser.email
+                        , bio = Maybe.withDefault dbUser.bio formUser.bio
+                        , image = Maybe.withDefault dbUser.image formUser.image
+                        , hash = hs.hash
+                        , salt = hs.salt
+                    }
+            )
