@@ -360,7 +360,3 @@ Feels like Method should be part of the routing though.
         - Parameterised statements make things simpler. Postgres can do the SQL injection escaping stuff.
     - Interpreting results
         - Not sure how this works. Needs to be parsed at some point. Probably happens in Node.
-- Monads and stuff
-    - Try to get rid of the big indentation pyramids.
-    - Can just split things into smaller functions. No big deal.
-    - Or could try to implement something like `Result.map2`. Would be nice to be able to combine subexpressions more easily. And interesting!

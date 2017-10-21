@@ -19,7 +19,11 @@ type alias JsInterface =
 
 type OutboundPortAction
     = RespondToClient
-    | HashPassword String
+    | JsEffect JsEffect
+
+
+type JsEffect
+    = HashPassword String
     | CheckPassword
         { hash : String
         , salt : String
@@ -64,7 +68,7 @@ type Msg
 -}
 type HandlerState e a
     = HandlerData a
-    | AwaitingPort OutboundPortAction (JD.Value -> HandlerState e a)
+    | AwaitingPort JsEffect (JD.Value -> HandlerState e a)
     | AwaitingTask (Task Never (HandlerState e a))
     | HandlerError e
 
