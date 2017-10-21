@@ -7,7 +7,7 @@ import Json.Encode as JE
 import Models.User exposing (..)
 import Database exposing (..)
 import Dict
-import HandlerState exposing (andThen, onError, tryTask, wrapErrString, map2)
+import HandlerState exposing (andThen, onError, tryTask, wrapErrString, map2, map3)
 
 
 type UsersRoute
@@ -252,34 +252,32 @@ putCurrentUser secret conn =
             HandlerData conn.request.body
                 |> andThen (JD.decodeString putUserFormDecoder >> HandlerData)
                 |> onError (wrapErrString UnprocessableEntity)
-    in
-        username
-            |> tryTask handleDbError findByUsername
-            |> map2 (mergeUserData secret) formUser
-            |> andThen (saveUser secret conn)
 
+        dbUser =
+            tryTask handleDbError findByUsername username
 
-mergeUserData : Secret -> PutUserForm -> User -> HandlerState EndpointError User
-mergeUserData secret formUser dbUser =
-    (case formUser.password of
-        Nothing ->
+        hashAndSalt formUser dbUser =
+            case formUser.password of
+                Nothing ->
+                    HandlerData
+                        { hash = dbUser.hash, salt = dbUser.salt }
+
+                Just plainText ->
+                    AwaitingPort (HashPassword plainText) HandlerData
+                        |> andThen (JD.decodeValue decodeHashAndSalt >> HandlerData)
+                        |> onError (wrapErrString InternalError)
+
+        mergeUserData formUser dbUser hs =
             HandlerData
-                { hash = dbUser.hash, salt = dbUser.salt }
-
-        Just plainText ->
-            AwaitingPort (HashPassword plainText) HandlerData
-                |> andThen (JD.decodeValue decodeHashAndSalt >> HandlerData)
-                |> onError (wrapErrString InternalError)
-    )
-        |> andThen
-            (\hs ->
-                HandlerData
-                    { dbUser
-                        | username = Maybe.withDefault dbUser.username formUser.username
-                        , email = Maybe.withDefault dbUser.email formUser.email
-                        , bio = Maybe.withDefault dbUser.bio formUser.bio
-                        , image = Maybe.withDefault dbUser.image formUser.image
-                        , hash = hs.hash
-                        , salt = hs.salt
-                    }
-            )
+                { dbUser
+                    | username = Maybe.withDefault dbUser.username formUser.username
+                    , email = Maybe.withDefault dbUser.email formUser.email
+                    , bio = Maybe.withDefault dbUser.bio formUser.bio
+                    , image = Maybe.withDefault dbUser.image formUser.image
+                    , hash = hs.hash
+                    , salt = hs.salt
+                }
+    in
+        map2 hashAndSalt formUser dbUser
+            |> map3 mergeUserData formUser dbUser
+            |> andThen (saveUser secret conn)
