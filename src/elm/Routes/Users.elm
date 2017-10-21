@@ -210,15 +210,8 @@ getCurrentUser secret conn =
     requireAuth secret conn
         |> andThen (.username >> HandlerData)
         |> tryTask handleDbError findByUsername
-        |> andThen
-            (\user ->
-                HandlerData <|
-                    JE.object <|
-                        [ ( "user"
-                          , toAuthJSON secret conn.timestamp user
-                          )
-                        ]
-            )
+        |> andThen (HandlerData << toAuthJSON secret conn.timestamp)
+        |> andThen (\userJson -> HandlerData <| JE.object <| [ ( "user", userJson ) ])
 
 
 type alias PutUserForm =
