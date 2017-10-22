@@ -3,8 +3,8 @@
 //-----------------------------------------------
 global.XMLHttpRequest = require('./xhr-elm'); // Polyfill for elm-lang/http
 const http = require('http');
-const crypto = require('crypto');
 const Elm = require('../../build/elm');
+const passwords = require('./passwords');
 
 //-----------------------------------------------
 // Config
@@ -35,84 +35,40 @@ const respondToClient = ({ nodeResponseObject, statusCode, headers, body }) => {
   nodeResponseObject.end(body);
 };
 
-const generateSalt = () =>
-  new Promise((resolve, reject) => {
-    crypto.randomBytes(256, (err, buf) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(buf.toString('base64'));
-      }
-    });
-  });
-
-const hashPassword = (plainText, salt) =>
-  new Promise((resolve, reject) => {
-    const callback = (err, derivedKey) =>
-      err ? reject(err) : resolve(derivedKey);
-    crypto.pbkdf2(plainText, salt, 100000, 512, 'sha512', callback);
-  });
-
-function handleActionsFromElm(elmData) {
-  console.log('handleActionsFromElm', elmData.tag);
+const dispatchEffects = async elmData => {
   switch (elmData.tag) {
     case 'RespondToClient':
       respondToClient(elmData.payload);
-      break;
+      return;
 
     case 'HashPassword':
-      (plainText =>
-        generateSalt()
-          .then(salt =>
-            hashPassword(plainText, salt)
-              .then(buffer => buffer.toString('base64'))
-              .then(hash =>
-                sendToElm({
-                  ...elmData,
-                  tag: 'JsActionResult',
-                  payload: { hash, salt },
-                })
-              )
-          )
-          .catch(e =>
-            sendToElm({
-              ...elmData,
-              tag: 'JsError',
-              payload: e.toString(),
-            })
-          ))(elmData.payload);
-      break;
+      return await passwords.hash(elmData.payload);
 
     case 'CheckPassword':
-      (({ hash, salt, plainText }) => {
-        const dbHash = new Buffer(hash, 'base64');
-        hashPassword(plainText, salt)
-          .then(formHash => crypto.timingSafeEqual(dbHash, formHash))
-          .then(passwordIsValid =>
-            sendToElm({
-              ...elmData,
-              tag: 'JsActionResult',
-              payload: { passwordIsValid },
-            })
-          )
-          .catch(e =>
-            sendToElm({
-              ...elmData,
-              tag: 'JsError',
-              payload: e.toString(),
-            })
-          );
-      })(elmData.payload);
-      break;
+      return await passwords.check(elmData.payload);
 
     default:
-      console.error('Unhandled Elm action', elmData);
+      throw new Error('Unhandled Elm action');
+  }
+};
+
+async function handleActionsFromElm(elmData) {
+  console.log('handleActionsFromElm:', elmData.tag);
+  try {
+    const effectData = await dispatchEffects(elmData);
+    if (effectData) {
       sendToElm({
         ...elmData,
-        tag: 'JsError',
-        payload: 'Unhandled Elm action',
+        tag: 'JsActionResult',
+        payload: effectData,
       });
-      break;
+    }
+  } catch (e) {
+    sendToElm({
+      ...elmData,
+      tag: 'JsError',
+      payload: e.toString(),
+    });
   }
 }
 
@@ -161,13 +117,3 @@ const server = http.createServer(handleNewConnection);
 server.listen(port, hostname, () => {
   console.log(`Server running at http://${hostname}:${port}/`);
 });
-
-//-----------------------------------------------
-// Exports for testing
-//-----------------------------------------------
-module.exports = {
-  hashPassword,
-  server,
-  respondToClient,
-  Elm,
-};

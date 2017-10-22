@@ -2,7 +2,7 @@
   "name": "elm-node-realworld",
   "version": "1.0.0",
   "description": "Experiment to translate the RealWorld Node example app to Elm. Just because I like Elm and I want to see if I can do this.",
-  "main": "index.js",
+  "main": "src/js/index.js",
   "dependencies": {
     "xmlhttprequest": "^1.8.0"
   },
@@ -13,8 +13,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "elm-make src/elm/Main.elm --output build/elm.js",
-    "watch": "nodemon -w src -e elm,js --exec \"elm-make src/elm/Main.elm --output build/elm.js && node src/js/app.js\"",
-    "start": "npm run build && node src/js/app.js"
+    "watch": "nodemon -w src -e elm,js --exec \"elm-make src/elm/Main.elm --output build/elm.js && node src/js/index.js\"",
+    "start": "npm run build && node src/js/index.js"
   },
   "author": "",
   "license": "ISC"

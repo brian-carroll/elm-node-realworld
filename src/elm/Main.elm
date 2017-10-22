@@ -193,7 +193,7 @@ jsActionCmd : OutboundPortAction -> Connection -> Cmd Msg
 jsActionCmd elmData conn =
     let
         constructorToString x =
-            toString elmData |> String.words |> List.head |> Maybe.withDefault ""
+            toString x |> String.words |> List.head |> Maybe.withDefault ""
 
         tag =
             case elmData of
