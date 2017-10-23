@@ -14,11 +14,12 @@ import Types exposing (..)
 
 decodeConnection : ConnectionId -> JD.Decoder Connection
 decodeConnection connectionId =
-    JD.map4 Connection
+    JD.map5 Connection
         (JD.field "request" decodeRequest)
         (JD.field "response" decodeResponse)
         (JD.succeed connectionId)
         (JD.succeed <| Tuple.first connectionId)
+        (JD.field "dbClient" JD.value)
 
 
 decodeRequest : JD.Decoder Request

@@ -222,6 +222,13 @@ jsActionCmd elmData conn =
                                     , ( "salt", JE.string salt )
                                     , ( "plainText", JE.string plainText )
                                     ]
+
+                            SqlQuery { sql, values } ->
+                                JE.object
+                                    [ ( "dbClient", conn.dbClient )
+                                    , ( "sql", JE.string sql )
+                                    , ( "values", JE.list (List.map JE.string values) )
+                                    ]
             }
 
 

@@ -1,4 +1,10 @@
-module Database exposing (..)
+module Database
+    exposing
+        ( DbPostBulkResponse
+        , dbUrl
+        , postBulkDocs
+        , handleDbError
+        )
 
 import Http
 import Json.Encode as JE

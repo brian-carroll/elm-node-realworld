@@ -29,6 +29,10 @@ type JsEffect
         , salt : String
         , plainText : String
         }
+    | SqlQuery
+        { sql : String
+        , values : List String
+        }
 
 
 type InboundPortData
@@ -96,6 +100,7 @@ type alias Connection =
     , response : Response
     , id : ConnectionId
     , timestamp : Time
+    , dbClient : JD.Value
     }
 
 

@@ -4,6 +4,7 @@
   "description": "Experiment to translate the RealWorld Node example app to Elm. Just because I like Elm and I want to see if I can do this.",
   "main": "src/js/index.js",
   "dependencies": {
+    "pg": "^7.3.0",
     "xmlhttprequest": "^1.8.0"
   },
   "devDependencies": {

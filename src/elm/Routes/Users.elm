@@ -1,13 +1,31 @@
 module Routes.Users exposing (..)
 
-import UrlParser exposing (Parser, s, top, map, oneOf)
-import Types exposing (..)
+-- library imports
+
 import Json.Decode as JD
 import Json.Encode as JE
-import Models.User exposing (..)
-import Database exposing (..)
 import Dict
+import UrlParser exposing (Parser, s, top, map, oneOf)
+
+
+-- local imports
+
+import Types exposing (..)
+import Database exposing (handleDbError)
 import HandlerState exposing (andThen, onError, tryTask, wrapErrString, map2, map3)
+import Models.User
+    exposing
+        ( User
+        , Username
+        , Email
+        , decodeEmail
+        , findByUsername
+        , decodeUsername
+        , decodeHashAndSalt
+        , toAuthJSON
+        , verifyJWT
+        , JwtPayload
+        )
 
 
 type UsersRoute

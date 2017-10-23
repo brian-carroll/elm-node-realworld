@@ -2,3 +2,4 @@ node_modules/
 elm-stuff/
 build/
 .vscode/
+src/js/config.js

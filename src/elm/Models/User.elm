@@ -1,14 +1,52 @@
-module Models.User exposing (..)
+module Models.User
+    exposing
+        ( User
+        , Username
+        , Email
+        , findByEmail
+        , findByUsername
+        , decodeEmail
+        , decodeUsername
+        , decodeHashAndSalt
+        , toAuthJSON
+        , verifyJWT
+        , JwtPayload
+        , save
+        )
+
+{-
+      redefine in SQL:
+          - findByEmail        select * from user where email=$1  , then decode DB JSON & handle DB errors
+          - findByUsername     select * from user where email=$1  , then decode DB JSON & handle DB errors
+          - save               upsert
+
+   insert into pinned_tweets (user_handle, tweet_id, pinned_at)
+     values (
+       'rey',
+       5,
+       clock_timestamp()
+     )
+   on conflict (user_handle)
+   do update set (tweet_id, pinned_at) = (5, clock_timestamp())
+   where pinned_tweets.user_handle = 'rey';
+
+
+-}
+-- library imports
 
 import Json.Decode as JD exposing (Decoder)
 import Json.Encode as JE
-import Regex exposing (regex)
-import Types exposing (..)
-import JsonWebToken as JWT
-import Time
-import Database
-import Http
 import Task exposing (Task)
+import Time
+import Http
+import Regex exposing (regex)
+import JsonWebToken as JWT
+
+
+-- app imports
+
+import Types exposing (..)
+import Database
 
 
 type alias User =

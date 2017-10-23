@@ -5,21 +5,17 @@ global.XMLHttpRequest = require('./xhr-elm'); // Polyfill for elm-lang/http
 const http = require('http');
 const Elm = require('../../build/elm');
 const passwords = require('./passwords');
+const config = require('./config');
+const database = require('./database');
 
 //-----------------------------------------------
 // Config
 //-----------------------------------------------
-const hostname = '127.0.0.1';
-const port = 8000;
 
 //-----------------------------------------------
 // Elm setup
 //-----------------------------------------------
-const elmFlags = {
-  secret: process.env.NODE_ENV === 'production' ? process.env.SECRET : 'secret',
-  jsActionTimeout: 1000, // JS interop actions will be abandoned after this timeout
-  jsActionCheckInterval: 1000, // Check this often whether JS actions have timed out
-};
+const elmFlags = config.elm;
 const elmApp = Elm.Main.worker(elmFlags);
 elmApp.ports.elmToJs.subscribe(handleActionsFromElm);
 const sendToElm = x => {
@@ -30,9 +26,16 @@ const sendToElm = x => {
 //-----------------------------------------------
 // JS-Elm interop
 //-----------------------------------------------
-const respondToClient = ({ nodeResponseObject, statusCode, headers, body }) => {
+const respondToClient = ({
+  nodeResponseObject,
+  dbClient,
+  statusCode,
+  headers,
+  body,
+}) => {
   nodeResponseObject.writeHead(statusCode, headers);
   nodeResponseObject.end(body);
+  database.releaseClient(dbClient);
 };
 
 const dispatchEffects = async elmData => {
@@ -46,6 +49,9 @@ const dispatchEffects = async elmData => {
 
     case 'CheckPassword':
       return await passwords.check(elmData.payload);
+
+    case 'SqlQuery':
+      return await database.runQuery(elmData.payload);
 
     default:
       throw new Error('Unhandled Elm action');
@@ -81,7 +87,7 @@ let sequenceNo = 0;
 let previousTimestamp = 0;
 
 class Connection {
-  constructor(request, response) {
+  constructor(request, response, dbClient) {
     const timestamp = Date.now();
     if (timestamp === previousTimestamp) {
       sequenceNo++;
@@ -92,7 +98,7 @@ class Connection {
     return {
       tag: 'NewConnection',
       connectionId: [timestamp, sequenceNo],
-      payload: { request, response },
+      payload: { request, response, dbClient },
     };
   }
 }
@@ -103,15 +109,22 @@ const handleNewConnection = (request, response) => {
     .on('data', chunk => {
       bodyChunks.push(chunk);
     })
-    .on('end', () => {
+    .on('end', async () => {
       request.body = Buffer.concat(bodyChunks).toString();
-      sendToElm(new Connection(request, response));
+      try {
+        const dbClient = await database.checkoutClient();
+        sendToElm(new Connection(request, response, dbClient));
+      } catch (e) {
+        response.statusCode(500).end(e.toString());
+      }
     });
 };
 
 //-----------------------------------------------
 // Node server
 //-----------------------------------------------
+const { hostname, port } = config.server;
+
 const server = http.createServer(handleNewConnection);
 
 server.listen(port, hostname, () => {
