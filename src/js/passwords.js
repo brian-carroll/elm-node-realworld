@@ -1,15 +1,12 @@
 const crypto = require('crypto');
 
 const generateSalt = () =>
-  new Promise((resolve, reject) => {
-    crypto.randomBytes(256, (err, buf) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(buf.toString('base64'));
-      }
-    });
-  });
+  new Promise((resolve, reject) =>
+    crypto.randomBytes(
+      256,
+      (err, buf) => (err ? reject(err) : resolve(buf.toString('base64')))
+    )
+  );
 
 const generateHash = (plainText, salt) =>
   new Promise((resolve, reject) => {
