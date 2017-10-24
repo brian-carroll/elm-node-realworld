@@ -185,11 +185,10 @@ map2 f a b =
             AwaitingPort action (cont >> (\hs -> map2 f hs b))
 
         AwaitingTask task ->
-            AwaitingTask (task |> Task.andThen (\hs -> Task.succeed (map2 f hs b)))
+            AwaitingTask (task |> Task.map (\hs -> map2 f hs b))
 
 
-{-| map3 : (a -> b -> c -> HandlerState x d) -> HandlerState x a -> HandlerState x b -> HandlerState x c -> HandlerState x d
-Same kind of thing as map2. Surprise!
+{-| Same kind of thing as map2. Surprise!
 -}
 map3 : (a -> b -> c -> HandlerState x d) -> HandlerState x a -> HandlerState x b -> HandlerState x c -> HandlerState x d
 map3 f a b c =
@@ -204,4 +203,4 @@ map3 f a b c =
             AwaitingPort action (cont >> (\hs -> map3 f hs b c))
 
         AwaitingTask task ->
-            AwaitingTask (task |> Task.andThen (\hs -> Task.succeed (map3 f hs b c)))
+            AwaitingTask (task |> Task.map (\hs -> map3 f hs b c))
