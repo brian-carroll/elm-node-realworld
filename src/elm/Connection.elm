@@ -63,13 +63,14 @@ decodeResponse =
         (JD.succeed "")
 
 
-encodeResponse : Response -> JE.Value
-encodeResponse response =
+encodeResponse : Connection -> JE.Value
+encodeResponse conn =
     JE.object
-        [ ( "nodeResponseObject", response.nodeResponseObject )
-        , ( "statusCode", JE.int response.statusCode )
-        , ( "headers", encodeHeaders response.headers )
-        , ( "body", JE.string response.body )
+        [ ( "nodeResponseObject", conn.response.nodeResponseObject )
+        , ( "statusCode", JE.int conn.response.statusCode )
+        , ( "headers", encodeHeaders conn.response.headers )
+        , ( "body", JE.string conn.response.body )
+        , ( "dbClient", conn.dbClient )
         ]
 
 

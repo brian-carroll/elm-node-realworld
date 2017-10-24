@@ -145,12 +145,22 @@ encodeUserSqlValues user =
     ]
 
 
-decodeUserSqlResult : JD.Decoder (Result String User)
-decodeUserSqlResult =
+decodeSqlResult : JD.Decoder a -> JD.Decoder (Result String a)
+decodeSqlResult decoder =
     JD.oneOf
-        [ JD.map Ok (JD.field "result" decodeUser)
+        [ JD.map Ok
+            (JD.field "result" <|
+                JD.field "rows" <|
+                    JD.index 0 <|
+                        decoder
+            )
         , JD.map Err (JD.field "error" JD.string)
         ]
+
+
+decodeUserSqlResult : JD.Decoder (Result String User)
+decodeUserSqlResult =
+    decodeSqlResult decodeUser
 
 
 findByUsername : Username -> HandlerState EndpointError User
@@ -187,15 +197,19 @@ save : User -> HandlerState EndpointError User
 save user =
     AwaitingPort
         (SqlQuery
-            { sql =
-                case user.id of
-                    Nothing ->
-                        "INSERT INTO users(username, email, bio, image, hash, salt) VALUES($2,$3,$4,$5,$6,$7) RETURNING *;"
+            (case user.id of
+                Nothing ->
+                    { sql =
+                        "INSERT INTO users(username, email, bio, image, hash, salt) VALUES($1,$2,$3,$4,$5,$6) RETURNING *;"
+                    , values = List.drop 1 <| encodeUserSqlValues user
+                    }
 
-                    Just id ->
+                Just id ->
+                    { sql =
                         "UPDATE users SET username=$2, email=$3, bio=$4, image=$5, hash=$6, salt=$7 WHERE id=$1 RETURNING *;"
-            , values = encodeUserSqlValues user
-            }
+                    , values = encodeUserSqlValues user
+                    }
+            )
         )
         (HandlerData << JD.decodeValue decodeUserSqlResult)
         |> onError (\jsonError -> wrapErrString InternalError jsonError)

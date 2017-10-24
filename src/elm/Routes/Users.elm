@@ -261,7 +261,7 @@ putCurrentUser secret conn =
         dbUser =
             username |> andThen findByUsername
 
-        hashAndSalt formUser dbUser =
+        getHashAndSalt formUser dbUser =
             case formUser.password of
                 Nothing ->
                     HandlerData
@@ -290,6 +290,6 @@ putCurrentUser secret conn =
                                 formUser.image
                 }
     in
-        map2 hashAndSalt formUser dbUser
+        map2 getHashAndSalt formUser dbUser
             |> map3 mergeUserData formUser dbUser
             |> andThen (saveUser secret conn)

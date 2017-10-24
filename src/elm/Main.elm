@@ -209,7 +209,7 @@ jsActionCmd elmData conn =
             , payload =
                 case elmData of
                     RespondToClient ->
-                        encodeResponse conn.response
+                        encodeResponse conn
 
                     JsEffect effect ->
                         case effect of

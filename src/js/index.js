@@ -70,6 +70,7 @@ async function handleActionsFromElm(elmData) {
       });
     }
   } catch (e) {
+    console.error(e);
     sendToElm({
       ...elmData,
       tag: 'JsError',
