@@ -3,6 +3,7 @@ module Models.User
         ( User
         , Username
         , Email
+        , HashAndSalt
         , findByEmail
         , findByUsername
         , decodeEmail
@@ -36,9 +37,7 @@ module Models.User
 
 import Json.Decode as JD exposing (Decoder)
 import Json.Encode as JE
-import Task exposing (Task)
 import Time
-import Http
 import Regex exposing (regex)
 import JsonWebToken as JWT
 
@@ -46,15 +45,15 @@ import JsonWebToken as JWT
 -- app imports
 
 import Types exposing (..)
-import Database
+import HandlerState exposing (onError, wrapErrString)
 
 
 type alias User =
-    { rev : Maybe String
+    { id : Maybe Int
     , username : Username
     , email : Email
     , bio : String
-    , image : String
+    , image : Maybe String
     , hash : String
     , salt : String
     }
@@ -98,18 +97,6 @@ decodeEmail =
             )
 
 
-decodeUser : Decoder User
-decodeUser =
-    JD.map7 User
-        (JD.maybe (JD.field "_rev" JD.string))
-        (JD.field "_id" decodeUsername)
-        (JD.field "email" decodeEmail)
-        (JD.field "bio" JD.string)
-        (JD.field "image" JD.string)
-        (JD.field "hash" JD.string)
-        (JD.field "salt" JD.string)
-
-
 encodeUsername : Username -> JE.Value
 encodeUsername username =
     case username of
@@ -124,143 +111,95 @@ encodeEmail email =
             JE.string str
 
 
-toDatabaseJSON : User -> JE.Value
-toDatabaseJSON user =
-    let
-        emailId =
-            case user.email of
-                Email str ->
-                    JE.string <| "email:" ++ str
-
-        userId =
-            case user.username of
-                Username str ->
-                    JE.string <| "user:" ++ str
-    in
-        Debug.log "databaseJSON" <|
-            JE.object
-                [ ( "docs"
-                  , JE.list
-                        [ JE.object
-                            [ ( "_id", emailId )
-                            , ( "type", JE.string "Email" )
-                            , ( "user", userId )
-                            ]
-                        , JE.object <|
-                            (case user.rev of
-                                Nothing ->
-                                    []
-
-                                Just rev ->
-                                    [ ( "_rev", JE.string rev ) ]
-                            )
-                                ++ [ ( "_id", userId )
-                                   , ( "type", JE.string "User" )
-                                   , ( "email", encodeEmail user.email )
-                                   , ( "bio", JE.string user.bio )
-                                   , ( "image", JE.string user.image )
-                                   , ( "hash", JE.string user.hash )
-                                   , ( "salt", JE.string user.salt )
-                                   ]
-                        ]
-                  )
-                ]
-
-
-dbUserDocDecoder : Decoder User
-dbUserDocDecoder =
+decodeUser : Decoder User
+decodeUser =
     JD.map7 User
-        (JD.field "_rev" (JD.map Just JD.string))
-        (JD.field "_id" decodeUsernameFromId)
+        (JD.field "id" (JD.map Just JD.int))
+        (JD.field "username" decodeUsername)
         (JD.field "email" decodeEmail)
         (JD.field "bio" JD.string)
-        (JD.field "image" JD.string)
+        (JD.field "image" (JD.maybe JD.string))
         (JD.field "hash" JD.string)
         (JD.field "salt" JD.string)
 
 
-dBUserByEmailDecoder : Decoder User
-dBUserByEmailDecoder =
-    JD.field "rows" <|
-        JD.index 0 <|
-            JD.field "doc" dbUserDocDecoder
+encodeMaybe : (a -> JE.Value) -> Maybe a -> JE.Value
+encodeMaybe encoder maybeVal =
+    case maybeVal of
+        Just x ->
+            encoder x
+
+        Nothing ->
+            JE.null
 
 
-dropPrefix : String -> String -> String
-dropPrefix prefix str =
-    String.dropLeft
-        (String.length prefix)
-        str
+encodeUserSqlValues : User -> List JE.Value
+encodeUserSqlValues user =
+    [ encodeMaybe JE.int user.id
+    , encodeUsername user.username
+    , encodeEmail user.email
+    , JE.string user.bio
+    , encodeMaybe JE.string user.image
+    , JE.string user.hash
+    , JE.string user.salt
+    ]
 
 
-decodeUsernameFromId : Decoder Username
-decodeUsernameFromId =
-    JD.string
-        |> JD.andThen
-            (\usernameId ->
-                usernameId
-                    |> dropPrefix "user:"
-                    |> Username
-                    |> JD.succeed
-            )
+decodeUserSqlResult : JD.Decoder (Result String User)
+decodeUserSqlResult =
+    JD.oneOf
+        [ JD.map Ok (JD.field "result" decodeUser)
+        , JD.map Err (JD.field "error" JD.string)
+        ]
 
 
-decodeEmailFromId : Decoder Email
-decodeEmailFromId =
-    JD.string
-        |> JD.andThen
-            (\emailId ->
-                emailId
-                    |> dropPrefix "email:"
-                    |> Email
-                    |> JD.succeed
-            )
-
-
-findByUsername : Username -> Task Http.Error User
-findByUsername username =
-    let
-        usernameId =
-            case username of
-                Username str ->
-                    "user:" ++ str
-
-        url =
-            Debug.log "findByUsername" <|
-                Database.dbUrl
-                    ++ "/"
-                    ++ usernameId
-    in
-        Http.get url dbUserDocDecoder
-            |> Http.toTask
-
-
-findByEmail : Email -> Task Http.Error User
-findByEmail email =
-    let
-        emailStr =
-            case email of
-                Email str ->
-                    str
-
-        url =
-            Debug.log "findByEmail, URL"
-                (Database.dbUrl
-                    ++ "/_design/usersByEmail/_view/users-by-email?include_docs=true&key=\"email:"
-                    ++ emailStr
-                    ++ "\""
+findByUsername : Username -> HandlerState EndpointError User
+findByUsername u =
+    case u of
+        Username username ->
+            AwaitingPort
+                (SqlQuery
+                    { sql = "SELECT * FROM users WHERE username=$1 LIMIT 1;"
+                    , values = [ JE.string username ]
+                    }
                 )
-    in
-        Http.get url dBUserByEmailDecoder
-            |> Http.toTask
+                (HandlerData << JD.decodeValue decodeUserSqlResult)
+                |> onError (\jsonError -> wrapErrString InternalError jsonError)
+                |> onError (\dbError -> wrapErrString InternalError dbError)
 
 
-save : User -> Task Http.Error Database.DbPostBulkResponse
+findByEmail : Email -> HandlerState EndpointError User
+findByEmail e =
+    case e of
+        Email email ->
+            AwaitingPort
+                (SqlQuery
+                    { sql = "SELECT * FROM users WHERE email=$1 LIMIT 1;"
+                    , values = [ JE.string email ]
+                    }
+                )
+                (HandlerData << JD.decodeValue decodeUserSqlResult)
+                |> onError (\jsonError -> wrapErrString InternalError jsonError)
+                |> onError (\dbError -> wrapErrString InternalError dbError)
+
+
+save : User -> HandlerState EndpointError User
 save user =
-    user
-        |> toDatabaseJSON
-        |> Database.postBulkDocs
-        |> Http.toTask
+    AwaitingPort
+        (SqlQuery
+            { sql =
+                case user.id of
+                    Nothing ->
+                        "INSERT INTO users(username, email, bio, image, hash, salt) VALUES($2,$3,$4,$5,$6,$7) RETURNING *;"
+
+                    Just id ->
+                        "UPDATE users SET username=$2, email=$3, bio=$4, image=$5, hash=$6, salt=$7 WHERE id=$1 RETURNING *;"
+            , values = encodeUserSqlValues user
+            }
+        )
+        (HandlerData << JD.decodeValue decodeUserSqlResult)
+        |> onError (\jsonError -> wrapErrString InternalError jsonError)
+        |> onError (\dbError -> wrapErrString InternalError dbError)
 
 
 toAuthJSON : Secret -> Time.Time -> User -> JE.Value
@@ -273,7 +212,7 @@ toAuthJSON secret now user =
             [ ( "username", (encodeUsername user.username) )
             , ( "email", encodeEmail user.email )
             , ( "bio", JE.string user.bio )
-            , ( "image", JE.string user.image )
+            , ( "image", encodeMaybe JE.string user.image )
             , ( "token", JE.string token )
             ]
 
@@ -283,7 +222,7 @@ toProfileJSONFor viewingUser profileUser =
     JE.object
         [ ( "username", encodeUsername profileUser.username )
         , ( "bio", JE.string profileUser.bio )
-        , ( "image", JE.string profileUser.image )
+        , ( "image", encodeMaybe JE.string profileUser.image )
         , ( "following", JE.bool False )
         ]
 

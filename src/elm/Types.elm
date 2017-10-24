@@ -31,7 +31,7 @@ type JsEffect
         }
     | SqlQuery
         { sql : String
-        , values : List String
+        , values : List JD.Value
         }
 
 

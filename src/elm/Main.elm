@@ -227,7 +227,7 @@ jsActionCmd elmData conn =
                                 JE.object
                                     [ ( "dbClient", conn.dbClient )
                                     , ( "sql", JE.string sql )
-                                    , ( "values", JE.list (List.map JE.string values) )
+                                    , ( "values", JE.list values )
                                     ]
             }
 

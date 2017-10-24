@@ -18,6 +18,7 @@ import Models.User
         ( User
         , Username
         , Email
+        , HashAndSalt
         , decodeEmail
         , findByUsername
         , decodeUsername
@@ -119,36 +120,29 @@ register secret conn =
                             |> onError (wrapErrString InternalError)
                     )
 
-        userDoc formData hashAndSalt =
+        createUser formData hashAndSalt =
             HandlerData
-                { rev = Nothing
+                { id = Nothing
                 , username = formData.username
                 , email = formData.email
                 , bio = ""
-                , image = ""
+                , image = Nothing
                 , hash = hashAndSalt.hash
                 , salt = hashAndSalt.salt
                 }
     in
-        map2 userDoc formData hashAndSalt
+        map2 createUser formData hashAndSalt
             |> andThen (saveUser secret conn)
 
 
 saveUser : Secret -> Connection -> User -> EndpointState
 saveUser secret conn user =
-    HandlerData user
-        |> tryTask handleDbError Models.User.save
+    Models.User.save user
         |> andThen
-            (\dbResponse ->
-                if List.all .ok dbResponse then
-                    HandlerData <|
-                        JE.object
-                            [ ( "user", toAuthJSON secret conn.timestamp user ) ]
-                else
-                    HandlerError
-                        { status = InternalError
-                        , messages = List.filterMap .error dbResponse
-                        }
+            (\user ->
+                HandlerData <|
+                    JE.object
+                        [ ( "user", toAuthJSON secret conn.timestamp user ) ]
             )
 
 
@@ -178,7 +172,7 @@ login secret conn =
         user =
             formData
                 |> andThen (.email >> HandlerData)
-                |> tryTask handleDbError Models.User.findByEmail
+                |> andThen Models.User.findByEmail
 
         passwordIsValid formData user =
             AwaitingPort
@@ -227,7 +221,7 @@ getCurrentUser : Secret -> Connection -> EndpointState
 getCurrentUser secret conn =
     requireAuth secret conn
         |> andThen (.username >> HandlerData)
-        |> tryTask handleDbError findByUsername
+        |> andThen findByUsername
         |> andThen (HandlerData << toAuthJSON secret conn.timestamp)
         |> andThen (\userJson -> HandlerData <| JE.object <| [ ( "user", userJson ) ])
 
@@ -265,7 +259,7 @@ putCurrentUser secret conn =
                 |> onError (wrapErrString UnprocessableEntity)
 
         dbUser =
-            tryTask handleDbError findByUsername username
+            username |> andThen findByUsername
 
         hashAndSalt formUser dbUser =
             case formUser.password of
@@ -278,15 +272,22 @@ putCurrentUser secret conn =
                         |> andThen (JD.decodeValue decodeHashAndSalt >> HandlerData)
                         |> onError (wrapErrString InternalError)
 
+        mergeUserData : PutUserForm -> User -> HashAndSalt -> HandlerState x User
         mergeUserData formUser dbUser hs =
             HandlerData
                 { dbUser
                     | username = Maybe.withDefault dbUser.username formUser.username
                     , email = Maybe.withDefault dbUser.email formUser.email
                     , bio = Maybe.withDefault dbUser.bio formUser.bio
-                    , image = Maybe.withDefault dbUser.image formUser.image
                     , hash = hs.hash
                     , salt = hs.salt
+                    , image =
+                        case formUser.image of
+                            Nothing ->
+                                dbUser.image
+
+                            Just _ ->
+                                formUser.image
                 }
     in
         map2 hashAndSalt formUser dbUser
