@@ -11,7 +11,6 @@ import UrlParser exposing (Parser, s, top, map, oneOf)
 -- local imports
 
 import Types exposing (..)
-import Database exposing (handleDbError)
 import HandlerState exposing (andThen, onError, tryTask, wrapErrString, map2, map3)
 import Models.User
     exposing
