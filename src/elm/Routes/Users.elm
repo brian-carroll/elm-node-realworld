@@ -18,13 +18,13 @@ import Models.User
         , Username
         , Email
         , HashAndSalt
+        , JwtPayload
         , decodeEmail
         , findByUsername
         , decodeUsername
         , decodeHashAndSalt
         , toAuthJSON
         , verifyJWT
-        , JwtPayload
         )
 
 

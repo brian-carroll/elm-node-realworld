@@ -345,18 +345,44 @@ Feels like Method should be part of the routing though.
 
 
 ## What next?
-- CouchDB
-    - Hmmm... not sure I like it!
-    - You have to do all the atomicity stuff yourself, check for changes, compose and decompose the docs for a model...
-    - Uniqueness is a total hack
-    - Could try to get my head around it and see it as a challenge. Would be kind of good to learn about NoSQL.
-    - On the other hand it literally solves no problems for me.
-    - Raises the question - If I don't like the framework why am I creating it?
-- SQL
-    - Use Node Postgres or similar. Something that's not an ORM. Probably low-level and close to the SQL.
-    - SQL seems more fitting with the whole Elm safety thing. And logic and declarativeness and all that.
-    - Involves lots more JS interop, but I've sort of solved the main hurdles there.
-    - Creating statements
-        - Parameterised statements make things simpler. Postgres can do the SQL injection escaping stuff.
-    - Interpreting results
-        - Not sure how this works. Needs to be parsed at some point. Probably happens in Node.
+- More endpoints
+    - Will show up where the issues are and where the shared code should be
+    - Order as per Node tutorial
+        - Profiles
+        - Articles (create, modify, delete, favourite, unfavourite)
+        - Comments (add, get, delete)
+        - Follow users
+        - tags
+        - all articles & feed
+- Testing
+    - Integration
+        - Copy the Postman collection tests
+        - Integration tests must be in Node, not Elm, otherwise they're not end-to-end!
+        - Good way to check Elm/JS interop
+        - Set up and tear down a test database, and inject appropriate config
+    - Unit
+        - JS
+            - focus on hard-to-reach conditions and error handling
+                - Exceptions
+                - Unknown Elm actions
+            - think about design intent and test it
+                - e.g. connection ID being unique even with loads of requests
+            - modules
+                - index
+                - database
+                    - should return ?? to Elm on success
+                    - should return ?? to Elm on SQL error
+                    - should interface properly with node-postgres
+                - passwords
+                    - 
+                - xhr-elm
+        - Elm
+            - Focus on reducing the combinatorial explosion that we can't deal with in integration tests
+            - Check all the 'what ifs'
+            - Set up a test state machine to cycle through HandlerStates and check against expected sequence
+            - Maybe verify the SQL statements by running them on a dummy DB!
+            - Router tests? integration kinda covers it
+    - CI
+        - DB setup/teardown
+        - npm install
+        - elm package install
