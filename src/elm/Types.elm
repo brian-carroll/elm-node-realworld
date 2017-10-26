@@ -7,7 +7,7 @@ import Task exposing (Task)
 
 
 type alias ConnectionId =
-    ( Time, Int )
+    Float
 
 
 type alias JsInterface =

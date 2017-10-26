@@ -18,7 +18,7 @@ decodeConnection connectionId =
         (JD.field "request" decodeRequest)
         (JD.field "response" decodeResponse)
         (JD.succeed connectionId)
-        (JD.succeed <| Tuple.first connectionId)
+        (JD.field "timestamp" JD.float)
         (JD.field "dbClient" JD.value)
 
 

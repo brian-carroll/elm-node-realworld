@@ -79,23 +79,30 @@ async function handleActionsFromElm(elmData) {
 // Connection handler
 //-----------------------------------------------
 
-// Application-level state to guarantee unique connection ID's
 let sequenceNo = 0;
 let previousTimestamp = 0;
+
+const uniqueConnectionId = timestamp => {
+  // Requirements:
+  //  - Always less than Number.MAX_SAFE_INTEGER (2**53)
+  //  - Unique up to a ridiculous number of requests/second (4,096,000)
+  //  - OK until at least 2038, when UNIX-like timestamps are dead anyway
+  if (timestamp === previousTimestamp) {
+    sequenceNo++;
+  } else {
+    sequenceNo = 0;
+  }
+  previousTimestamp = timestamp;
+  return timestamp * 4096 + sequenceNo;
+};
 
 class Connection {
   constructor(request, response, dbClient) {
     const timestamp = Date.now();
-    if (timestamp === previousTimestamp) {
-      sequenceNo++;
-    } else {
-      sequenceNo = 0;
-    }
-    previousTimestamp = timestamp;
     return {
       tag: 'NewConnection',
-      connectionId: [timestamp, sequenceNo],
-      payload: { request, response, dbClient },
+      connectionId: uniqueConnectionId(timestamp),
+      payload: { request, response, timestamp, dbClient },
     };
   }
 }

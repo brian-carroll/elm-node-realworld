@@ -262,7 +262,7 @@ separateGarbage :
     -> ( Connection, c )
     -> ( PendingHandlers, List (Cmd Msg) )
     -> ( PendingHandlers, List (Cmd Msg) )
-separateGarbage timeout now ( timestamp, seq ) ( conn, _ ) ( pending, dumpCmds ) =
+separateGarbage timeout now connId ( conn, _ ) ( pending, dumpCmds ) =
     if conn.timestamp - now <= timeout then
         ( pending, dumpCmds )
     else
@@ -275,6 +275,6 @@ separateGarbage timeout now ( timestamp, seq ) ( conn, _ ) ( pending, dumpCmds )
                         }
                         conn
         in
-            ( Dict.remove ( timestamp, seq ) pending
+            ( Dict.remove connId pending
             , dumpConnection :: dumpCmds
             )
