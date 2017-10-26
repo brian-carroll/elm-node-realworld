@@ -382,3 +382,17 @@ Feels like Method should be part of the routing though.
         - DB setup/teardown
         - npm install
         - elm package install
+
+## File organisation
+- create an Api module and put common JSON stuff in there, as per spec
+    - user, article, error wrapper function
+    - part of the app, not framework
+- framework module
+    - connection, endpoint state, handler state
+    - update function, ports, js interface, garbage, response
+    - let app define specific effects
+    - is there any routing it can do?
+        - can I make a parser for route and method? Would it help?
+
+
+
