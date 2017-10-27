@@ -269,7 +269,7 @@ isFollowing currentUser profileUser =
                     INNER JOIN users AS followed
                         ON followed.id=follows.followed_id
                 WHERE
-                    followers.id=$1;
+                    followers.id=$1 AND
                     followed.id=$2;
                 """
             , values =
