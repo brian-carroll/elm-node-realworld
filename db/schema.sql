@@ -56,7 +56,7 @@ create table if not exists comments
     , updated_at timestamptz default now()
     );
 create trigger set_timestamp
-    before update on articles
+    before update on comments
     for each row
     execute procedure trigger_set_timestamp();
 
