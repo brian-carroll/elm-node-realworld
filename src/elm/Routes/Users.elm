@@ -23,7 +23,7 @@ import Models.User
         , findByUsername
         , decodeUsername
         , decodeHashAndSalt
-        , toAuthJSON
+        , authObj
         , verifyJWT
         )
 
@@ -121,7 +121,7 @@ register secret conn =
 
         createUser formData hashAndSalt =
             HandlerData
-                { id = Nothing
+                { id = 0
                 , username = formData.username
                 , email = formData.email
                 , bio = ""
@@ -137,12 +137,7 @@ register secret conn =
 saveUser : Secret -> Connection -> User -> EndpointState
 saveUser secret conn user =
     Models.User.save user
-        |> andThen
-            (\user ->
-                HandlerData <|
-                    JE.object
-                        [ ( "user", toAuthJSON secret conn.timestamp user ) ]
-            )
+        |> andThen (HandlerData << authObj secret conn.timestamp)
 
 
 type alias LoginForm =
@@ -186,9 +181,7 @@ login secret conn =
 
         generateResponse user isValid =
             if isValid then
-                HandlerData <|
-                    JE.object
-                        [ ( "user", toAuthJSON secret conn.timestamp user ) ]
+                HandlerData <| authObj secret conn.timestamp user
             else
                 HandlerError
                     { status = Unauthorized
@@ -221,8 +214,7 @@ getCurrentUser secret conn =
     requireAuth secret conn
         |> andThen (.username >> HandlerData)
         |> andThen findByUsername
-        |> andThen (HandlerData << toAuthJSON secret conn.timestamp)
-        |> andThen (\userJson -> HandlerData <| JE.object <| [ ( "user", userJson ) ])
+        |> andThen (HandlerData << authObj secret conn.timestamp)
 
 
 type alias PutUserForm =

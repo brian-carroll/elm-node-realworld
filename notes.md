@@ -386,6 +386,7 @@ Feels like Method should be part of the routing though.
 ## File organisation
 - create an Api module and put common JSON stuff in there, as per spec
     - user, article, error wrapper function
+    - forms?
     - part of the app, not framework
 - framework module
     - connection, endpoint state, handler state

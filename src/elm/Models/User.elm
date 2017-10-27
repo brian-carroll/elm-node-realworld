@@ -9,7 +9,7 @@ module Models.User
         , decodeEmail
         , decodeUsername
         , decodeHashAndSalt
-        , toAuthJSON
+        , authObj
         , verifyJWT
         , JwtPayload
         , save
@@ -49,7 +49,7 @@ import HandlerState exposing (onError, wrapErrString)
 
 
 type alias User =
-    { id : Maybe Int
+    { id : Int
     , username : Username
     , email : Email
     , bio : String
@@ -114,7 +114,7 @@ encodeEmail email =
 decodeUser : Decoder User
 decodeUser =
     JD.map7 User
-        (JD.field "id" (JD.map Just JD.int))
+        (JD.field "id" JD.int)
         (JD.field "username" decodeUsername)
         (JD.field "email" decodeEmail)
         (JD.field "bio" JD.string)
@@ -135,7 +135,7 @@ encodeMaybe encoder maybeVal =
 
 encodeUserSqlValues : User -> List JE.Value
 encodeUserSqlValues user =
-    [ encodeMaybe JE.int user.id
+    [ JE.int user.id
     , encodeUsername user.username
     , encodeEmail user.email
     , JE.string user.bio
@@ -198,13 +198,13 @@ save user =
     AwaitingPort
         (SqlQuery
             (case user.id of
-                Nothing ->
+                0 ->
                     { sql =
                         "INSERT INTO users(username, email, bio, image, hash, salt) VALUES($1,$2,$3,$4,$5,$6) RETURNING *;"
                     , values = List.drop 1 <| encodeUserSqlValues user
                     }
 
-                Just id ->
+                _ ->
                     { sql =
                         "UPDATE users SET username=$2, email=$3, bio=$4, image=$5, hash=$6, salt=$7 WHERE id=$1 RETURNING *;"
                     , values = encodeUserSqlValues user
@@ -216,29 +216,71 @@ save user =
         |> onError (\dbError -> wrapErrString InternalError dbError)
 
 
-toAuthJSON : Secret -> Time.Time -> User -> JE.Value
-toAuthJSON secret now user =
+authObj : Secret -> Time.Time -> User -> JE.Value
+authObj secret now user =
     let
         token =
             generateJWT secret now user
     in
-        JE.object
-            [ ( "username", (encodeUsername user.username) )
-            , ( "email", encodeEmail user.email )
-            , ( "bio", JE.string user.bio )
-            , ( "image", encodeMaybe JE.string user.image )
-            , ( "token", JE.string token )
+        JE.object <|
+            [ ( "user"
+              , JE.object
+                    [ ( "username", (encodeUsername user.username) )
+                    , ( "email", encodeEmail user.email )
+                    , ( "bio", JE.string user.bio )
+                    , ( "image", encodeMaybe JE.string user.image )
+                    , ( "token", JE.string token )
+                    ]
+              )
             ]
 
 
-toProfileJSONFor : User -> User -> JE.Value
-toProfileJSONFor viewingUser profileUser =
-    JE.object
-        [ ( "username", encodeUsername profileUser.username )
-        , ( "bio", JE.string profileUser.bio )
-        , ( "image", encodeMaybe JE.string profileUser.image )
-        , ( "following", JE.bool False )
-        ]
+profileObj : User -> User -> JE.Value
+profileObj viewingUser profileUser =
+    let
+        image =
+            Maybe.withDefault
+                "https://static.productionready.io/images/smiley-cyrus.jpg"
+                profileUser.image
+    in
+        JE.object
+            [ ( "username", encodeUsername profileUser.username )
+            , ( "bio", JE.string profileUser.bio )
+            , ( "image", JE.string image )
+            , ( "following", JE.bool False )
+            ]
+
+
+
+{- Another way to do this would be to return just the sql query record
+   Then let the endpoint do all of the endpointy stuff
+-}
+
+
+isFollowing : User -> User -> HandlerState EndpointError Bool
+isFollowing currentUser profileUser =
+    AwaitingPort
+        (SqlQuery
+            { sql = """
+                SELECT COUNT(*)>0 FROM
+                    users AS followers
+                    INNER JOIN follows
+                        ON followers.id=follows.follower_id
+                    INNER JOIN users AS followed
+                        ON followed.id=follows.followed_id
+                WHERE
+                    followers.id=$1;
+                    followed.id=$2;
+                """
+            , values =
+                [ JE.int currentUser.id
+                , JE.int profileUser.id
+                ]
+            }
+        )
+        (HandlerData << JD.decodeValue (decodeSqlResult JD.bool))
+        |> onError (wrapErrString InternalError)
+        |> onError (wrapErrString InternalError)
 
 
 type alias HashAndSalt =

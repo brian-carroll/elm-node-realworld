@@ -16,7 +16,7 @@ const generateHash = (plainText, salt) =>
   });
 
 module.exports = {
-  hash: async plainText => {
+  async hash(plainText) {
     const salt = await generateSalt();
     const hashBuffer = await generateHash(plainText, salt);
     return {
@@ -25,7 +25,7 @@ module.exports = {
     };
   },
 
-  check: async ({ hash, salt, plainText }) => {
+  async check({ hash, salt, plainText }) {
     const dbHash = new Buffer(hash, 'base64');
     const formHash = await generateHash(plainText, salt);
     const passwordIsValid = crypto.timingSafeEqual(dbHash, formHash);
