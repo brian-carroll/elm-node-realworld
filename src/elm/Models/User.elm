@@ -242,15 +242,11 @@ profileObj profileUser isFollowing =
 
 
 
-{- Another way to do this would be to return just the sql query record
-   Then let the endpoint do all of the endpointy stuff
--}
-
 
 isFollowing : Username -> Username -> HandlerState EndpointError Bool
 isFollowing currentUsername profileUsername =
-    AwaitingPort
-        (SqlQuery
+
+      runSqlQuery
             { sql = """
                 SELECT COUNT(*)>0 FROM
                     users AS followers
@@ -266,11 +262,7 @@ isFollowing currentUsername profileUsername =
                 , encodeUsername profileUsername
                 ]
             }
-        )
-        (HandlerData << JD.decodeValue (decodeSqlResult JD.bool))
-        |> onError (wrapErrString InternalError)
-        |> onError (wrapErrString InternalError)
-
+        
 
 type alias HashAndSalt =
     { hash : String
