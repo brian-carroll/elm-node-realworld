@@ -3,8 +3,6 @@ module Routes.Users exposing (..)
 -- library imports
 
 import Json.Decode as JD
-import Json.Encode as JE
-import Dict
 import UrlParser exposing (Parser, s, top, map, oneOf)
 
 
@@ -12,6 +10,7 @@ import UrlParser exposing (Parser, s, top, map, oneOf)
 
 import Types exposing (..)
 import HandlerState exposing (andThen, onError, tryTask, wrapErrString, map2, map3)
+import Routes.Api exposing (requireAuth)
 import Models.User
     exposing
         ( User
@@ -24,6 +23,7 @@ import Models.User
         , decodeUsername
         , decodeHashAndSalt
         , authObj
+        , profileObj
         , verifyJWT
         )
 
@@ -190,23 +190,6 @@ login secret conn =
     in
         map2 passwordIsValid formData user
             |> map2 generateResponse user
-
-
-requireAuth : Secret -> Connection -> HandlerState EndpointError JwtPayload
-requireAuth secret conn =
-    case Dict.get "authorization" conn.request.headers of
-        Nothing ->
-            wrapErrString Unauthorized "Authorization header required"
-
-        Just auth ->
-            case String.words auth of
-                [ "Token", token ] ->
-                    HandlerData token
-                        |> andThen (verifyJWT secret conn.timestamp >> HandlerData)
-                        |> onError (wrapErrString Unauthorized)
-
-                _ ->
-                    wrapErrString Unauthorized "Invalid token"
 
 
 getCurrentUser : Secret -> Connection -> EndpointState

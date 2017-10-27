@@ -1,38 +1,22 @@
 module Models.User
     exposing
         ( User
-        , Username
-        , Email
+        , Username(..)
+        , Email(..)
         , HashAndSalt
+        , JwtPayload
         , findByEmail
         , findByUsername
         , decodeEmail
         , decodeUsername
         , decodeHashAndSalt
         , authObj
+        , profileObj
         , verifyJWT
-        , JwtPayload
         , save
+        , isFollowing
         )
 
-{-
-      redefine in SQL:
-          - findByEmail        select * from user where email=$1  , then decode DB JSON & handle DB errors
-          - findByUsername     select * from user where email=$1  , then decode DB JSON & handle DB errors
-          - save               upsert
-
-   insert into pinned_tweets (user_handle, tweet_id, pinned_at)
-     values (
-       'rey',
-       5,
-       clock_timestamp()
-     )
-   on conflict (user_handle)
-   do update set (tweet_id, pinned_at) = (5, clock_timestamp())
-   where pinned_tweets.user_handle = 'rey';
-
-
--}
 -- library imports
 
 import Json.Decode as JD exposing (Decoder)
@@ -158,62 +142,63 @@ decodeSqlResult decoder =
         ]
 
 
-decodeUserSqlResult : JD.Decoder (Result String User)
-decodeUserSqlResult =
-    decodeSqlResult decodeUser
+runSqlQuery : JD.Decoder a -> { sql : String, values : List JE.Value } -> HandlerState EndpointError a
+runSqlQuery decoder { sql, values } =
+    AwaitingPort
+        (SqlQuery
+            { sql = sql
+            , values = values
+            }
+        )
+        (HandlerData << JD.decodeValue (decodeSqlResult decoder))
+        |> onError (\jsonError -> wrapErrString InternalError jsonError)
+        |> onError (\dbError -> wrapErrString InternalError dbError)
 
 
 findByUsername : Username -> HandlerState EndpointError User
 findByUsername u =
     case u of
         Username username ->
-            AwaitingPort
-                (SqlQuery
-                    { sql = "SELECT * FROM users WHERE username=$1 LIMIT 1;"
-                    , values = [ JE.string username ]
-                    }
-                )
-                (HandlerData << JD.decodeValue decodeUserSqlResult)
-                |> onError (\jsonError -> wrapErrString InternalError jsonError)
-                |> onError (\dbError -> wrapErrString InternalError dbError)
+            runSqlQuery decodeUser
+                { sql = "SELECT * FROM users WHERE username=$1 LIMIT 1;"
+                , values = [ JE.string username ]
+                }
 
 
 findByEmail : Email -> HandlerState EndpointError User
 findByEmail e =
     case e of
         Email email ->
-            AwaitingPort
-                (SqlQuery
-                    { sql = "SELECT * FROM users WHERE email=$1 LIMIT 1;"
-                    , values = [ JE.string email ]
-                    }
-                )
-                (HandlerData << JD.decodeValue decodeUserSqlResult)
-                |> onError (\jsonError -> wrapErrString InternalError jsonError)
-                |> onError (\dbError -> wrapErrString InternalError dbError)
+            runSqlQuery decodeUser
+                { sql = "SELECT * FROM users WHERE email=$1 LIMIT 1;"
+                , values = [ JE.string email ]
+                }
 
 
 save : User -> HandlerState EndpointError User
 save user =
-    AwaitingPort
-        (SqlQuery
-            (case user.id of
-                0 ->
-                    { sql =
-                        "INSERT INTO users(username, email, bio, image, hash, salt) VALUES($1,$2,$3,$4,$5,$6) RETURNING *;"
-                    , values = List.drop 1 <| encodeUserSqlValues user
-                    }
+    runSqlQuery decodeUser
+        (case user.id of
+            0 ->
+                { sql =
+                    "INSERT INTO users(username, email, bio, image, hash, salt) VALUES($1,$2,$3,$4,$5,$6) RETURNING *;"
+                , values = List.drop 1 <| encodeUserSqlValues user
+                }
 
-                _ ->
-                    { sql =
-                        "UPDATE users SET username=$2, email=$3, bio=$4, image=$5, hash=$6, salt=$7 WHERE id=$1 RETURNING *;"
-                    , values = encodeUserSqlValues user
-                    }
-            )
+            _ ->
+                { sql =
+                    "UPDATE users SET username=$2, email=$3, bio=$4, image=$5, hash=$6, salt=$7 WHERE id=$1 RETURNING *;"
+                , values = encodeUserSqlValues user
+                }
         )
-        (HandlerData << JD.decodeValue decodeUserSqlResult)
-        |> onError (\jsonError -> wrapErrString InternalError jsonError)
-        |> onError (\dbError -> wrapErrString InternalError dbError)
+
+
+follow : Username -> Username -> HandlerState EndpointError User
+follow currentUsername profileUsername =
+    runSqlQuery decodeUser
+        { sql = """INSERT INTO follows(follower_id,followed_id) VALUES"""
+        , values = []
+        }
 
 
 authObj : Secret -> Time.Time -> User -> JE.Value
@@ -235,20 +220,25 @@ authObj secret now user =
             ]
 
 
-profileObj : User -> User -> JE.Value
-profileObj viewingUser profileUser =
+profileObj : User -> Bool -> HandlerState x JE.Value
+profileObj profileUser isFollowing =
     let
         image =
             Maybe.withDefault
                 "https://static.productionready.io/images/smiley-cyrus.jpg"
                 profileUser.image
     in
-        JE.object
-            [ ( "username", encodeUsername profileUser.username )
-            , ( "bio", JE.string profileUser.bio )
-            , ( "image", JE.string image )
-            , ( "following", JE.bool False )
-            ]
+        HandlerData <|
+            JE.object <|
+                [ ( "profile"
+                  , JE.object
+                        [ ( "username", encodeUsername profileUser.username )
+                        , ( "bio", JE.string profileUser.bio )
+                        , ( "image", JE.string image )
+                        , ( "following", JE.bool isFollowing )
+                        ]
+                  )
+                ]
 
 
 
@@ -257,8 +247,8 @@ profileObj viewingUser profileUser =
 -}
 
 
-isFollowing : User -> User -> HandlerState EndpointError Bool
-isFollowing currentUser profileUser =
+isFollowing : Username -> Username -> HandlerState EndpointError Bool
+isFollowing currentUsername profileUsername =
     AwaitingPort
         (SqlQuery
             { sql = """
@@ -269,12 +259,11 @@ isFollowing currentUser profileUser =
                     INNER JOIN users AS followed
                         ON followed.id=follows.followed_id
                 WHERE
-                    followers.id=$1 AND
-                    followed.id=$2;
+                    followers.username=$1 AND followed.id=$2;
                 """
             , values =
-                [ JE.int currentUser.id
-                , JE.int profileUser.id
+                [ encodeUsername currentUsername
+                , encodeUsername profileUsername
                 ]
             }
         )
