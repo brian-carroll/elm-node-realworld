@@ -30,12 +30,12 @@ urlParser =
 
 dispatch : ProgramConfig -> Connection -> EndpointState
 dispatch config conn =
-    case parseString urlParser conn.request.url of
+    case Debug.log "Route" (parseString urlParser conn.request.url) of
         Just (Tags tagsRoute) ->
             HandlerData JE.null
 
         Just (Profiles profilesRoute) ->
-            HandlerData JE.null
+            Routes.Profiles.dispatch config conn profilesRoute
 
         Just (Articles articlesRoute) ->
             HandlerData JE.null

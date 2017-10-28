@@ -2,7 +2,6 @@ module Routes.Profiles exposing (..)
 
 -- library imports
 
-import Json.Encode as JE
 import UrlParser exposing (Parser, (</>), s, string, map, oneOf, parseString, top)
 
 
@@ -54,10 +53,10 @@ dispatch config conn route =
             FollowProfile username ->
                 case method of
                     Post ->
-                        wrapErrString NotFound "Not implemented"
+                        followProfile config.secret username conn
 
                     Delete ->
-                        wrapErrString NotFound "Not implemented"
+                        unfollowProfile config.secret username conn
 
                     _ ->
                         methodNotAllowedError
@@ -93,5 +92,31 @@ followProfile secret profileUsername conn =
         currentUsername =
             requireAuth secret conn
                 |> andThen (.username >> HandlerData)
+
+        writeFollowToDb =
+            map2 Models.User.follow
+                currentUsername
+                (HandlerData profileUsername)
     in
-        HandlerData JE.null
+        writeFollowToDb
+            |> andThen (\_ -> HandlerData profileUsername)
+            |> andThen findByUsername
+            |> map2 (flip profileObj) (HandlerData True)
+
+
+unfollowProfile : Secret -> Username -> Connection -> EndpointState
+unfollowProfile secret profileUsername conn =
+    let
+        currentUsername =
+            requireAuth secret conn
+                |> andThen (.username >> HandlerData)
+
+        deleteFollowFromDb =
+            map2 Models.User.unfollow
+                currentUsername
+                (HandlerData profileUsername)
+    in
+        deleteFollowFromDb
+            |> andThen (\_ -> HandlerData profileUsername)
+            |> andThen findByUsername
+            |> map2 (flip profileObj) (HandlerData False)

@@ -15,6 +15,8 @@ module Models.User
         , verifyJWT
         , save
         , isFollowing
+        , follow
+        , unfollow
         )
 
 -- library imports
@@ -129,17 +131,28 @@ encodeUserSqlValues user =
     ]
 
 
-decodeSqlResult : JD.Decoder a -> JD.Decoder (Result String a)
-decodeSqlResult decoder =
+decodeSqlResults : JD.Decoder a -> JD.Decoder (Result String a)
+decodeSqlResults rowsDecoder =
     JD.oneOf
         [ JD.map Ok
             (JD.field "result" <|
                 JD.field "rows" <|
-                    JD.index 0 <|
-                        decoder
+                    rowsDecoder
             )
         , JD.map Err (JD.field "error" JD.string)
         ]
+
+
+decodeEmptyArray : JD.Decoder ()
+decodeEmptyArray =
+    JD.list (JD.succeed ())
+        |> JD.andThen
+            (\list ->
+                if List.isEmpty list then
+                    JD.succeed ()
+                else
+                    JD.fail "Array is not empty"
+            )
 
 
 runSqlQuery : JD.Decoder a -> { sql : String, values : List JE.Value } -> HandlerState EndpointError a
@@ -150,7 +163,7 @@ runSqlQuery decoder { sql, values } =
             , values = values
             }
         )
-        (HandlerData << JD.decodeValue (decodeSqlResult decoder))
+        (HandlerData << JD.decodeValue (decodeSqlResults decoder))
         |> onError (\jsonError -> wrapErrString InternalError jsonError)
         |> onError (\dbError -> wrapErrString InternalError dbError)
 
@@ -159,7 +172,7 @@ findByUsername : Username -> HandlerState EndpointError User
 findByUsername u =
     case u of
         Username username ->
-            runSqlQuery decodeUser
+            runSqlQuery (JD.index 0 decodeUser)
                 { sql = "SELECT * FROM users WHERE username=$1 LIMIT 1;"
                 , values = [ JE.string username ]
                 }
@@ -169,7 +182,7 @@ findByEmail : Email -> HandlerState EndpointError User
 findByEmail e =
     case e of
         Email email ->
-            runSqlQuery decodeUser
+            runSqlQuery (JD.index 0 decodeUser)
                 { sql = "SELECT * FROM users WHERE email=$1 LIMIT 1;"
                 , values = [ JE.string email ]
                 }
@@ -177,7 +190,7 @@ findByEmail e =
 
 save : User -> HandlerState EndpointError User
 save user =
-    runSqlQuery decodeUser
+    runSqlQuery (JD.index 0 decodeUser)
         (case user.id of
             0 ->
                 { sql =
@@ -193,11 +206,55 @@ save user =
         )
 
 
-follow : Username -> Username -> HandlerState EndpointError User
+follow : Username -> Username -> HandlerState EndpointError ()
 follow currentUsername profileUsername =
-    runSqlQuery decodeUser
-        { sql = """INSERT INTO follows(follower_id,followed_id) VALUES"""
-        , values = []
+    runSqlQuery decodeEmptyArray
+        { sql = """
+            insert into follows(follower_id,followed_id) values
+                ( (select id as follower_id from users where username=$1)
+                , (select id as followed_id from users where username=$2)
+                );
+            """
+        , values =
+            [ encodeUsername currentUsername
+            , encodeUsername profileUsername
+            ]
+        }
+
+
+unfollow : Username -> Username -> HandlerState EndpointError ()
+unfollow currentUsername profileUsername =
+    runSqlQuery decodeEmptyArray
+        { sql = """
+            delete from follows where
+                follower_id=(select id from users where username=$1)
+                AND
+                followed_id=(select id from users where username=$2);
+            """
+        , values =
+            [ encodeUsername currentUsername
+            , encodeUsername profileUsername
+            ]
+        }
+
+
+isFollowing : Username -> Username -> HandlerState EndpointError Bool
+isFollowing currentUsername profileUsername =
+    runSqlQuery (JD.index 0 (JD.field "following" JD.bool))
+        { sql = """
+            SELECT COUNT(*)>0 as following FROM
+                users AS followers
+                INNER JOIN follows
+                    ON followers.id=follows.follower_id
+                INNER JOIN users AS followed
+                    ON followed.id=follows.followed_id
+            WHERE
+                followers.username=$1 AND followed.username=$2;
+            """
+        , values =
+            [ encodeUsername currentUsername
+            , encodeUsername profileUsername
+            ]
         }
 
 
@@ -240,29 +297,6 @@ profileObj profileUser isFollowing =
                   )
                 ]
 
-
-
-
-isFollowing : Username -> Username -> HandlerState EndpointError Bool
-isFollowing currentUsername profileUsername =
-
-      runSqlQuery
-            { sql = """
-                SELECT COUNT(*)>0 FROM
-                    users AS followers
-                    INNER JOIN follows
-                        ON followers.id=follows.follower_id
-                    INNER JOIN users AS followed
-                        ON followed.id=follows.followed_id
-                WHERE
-                    followers.username=$1 AND followed.id=$2;
-                """
-            , values =
-                [ encodeUsername currentUsername
-                , encodeUsername profileUsername
-                ]
-            }
-        
 
 type alias HashAndSalt =
     { hash : String
