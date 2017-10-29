@@ -32,6 +32,7 @@ import JsonWebToken as JWT
 
 import Types exposing (..)
 import HandlerState exposing (onError, wrapErrString)
+import Models.Utils exposing (matchesRegex)
 
 
 type alias User =
@@ -51,14 +52,6 @@ type Username
 
 type Email
     = Email String
-
-
-matchesRegex : Regex.Regex -> (String -> a) -> String -> Decoder a
-matchesRegex r constructor s =
-    if Regex.contains r s then
-        JD.succeed (constructor s)
-    else
-        JD.fail (toString (constructor s) ++ " is invalid")
 
 
 decodeUsername : Decoder Username
