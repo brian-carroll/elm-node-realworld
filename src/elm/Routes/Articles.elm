@@ -4,43 +4,47 @@ import UrlParser exposing (Parser, (</>), s, string, map, oneOf, parseString, to
 import Types exposing (..)
 
 
+type Slug
+    = Slug String
+
+
+type CommentId
+    = CommentId String
+
+
 type ArticlesRoute
-    = AllArticles
-    | ArticlesFeed
-    | SingleArticle String
-    | FavouriteArticle String
-    | CommentOnArticle String
-    | DeleteArticleComment String String
+    = ListArticles
+    | FeedArticles
+    | GetArticle Slug
+    | CreateArticle
+    | UpdateArticle Slug
+    | DeleteArticle Slug
+    | AddComment Slug
+    | GetComments Slug
+    | DeleteComment Slug CommentId
+    | Favourite Slug
+    | Unfavourite Slug
 
 
-
-{-
-
-   get  '/articles/'  auth.optional
-   post  '/articles/'  auth.required
-
-   get  '/articles/feed'  auth.required
-
-   get  '/articles/:article'  auth.optional
-   put  '/articles/:article'  auth.required
-   delete  '/articles/:article'  auth.required
-
-   post  '/articles/:article/favorite'  auth.required
-   delete  '/articles/:article/favorite'  auth.required
-
-   post  '/articles/:article/comments'  auth.required
-   get  '/articles/:article/comments'  auth.optional
-   delete  '/articles/:article/comments/:comment'  auth.required
--}
+slug =
+    map Slug string
 
 
-urlParser : Parser (ArticlesRoute -> parserState) parserState
-urlParser =
+commentId =
+    map CommentId string
+
+
+routeParser =
     oneOf
-        [ map AllArticles top
-        , map ArticlesFeed (s "feed")
-        , map SingleArticle string
-        , map FavouriteArticle (string </> s "favourite")
-        , map CommentOnArticle (string </> s "comments")
-        , map DeleteArticleComment (string </> s "comments" </> string)
+        [ map ListArticles (m GET top)
+        , map FeedArticles (m GET (s "feed"))
+        , map GetArticle (m GET slug)
+        , map CreateArticle (m POST top)
+        , map UpdateArticle (m PUT slug)
+        , map DeleteArticle (m DELETE slug)
+        , map AddComment (m POST (slug </> s "comments"))
+        , map GetComments (m GET (slug </> s "comments"))
+        , map DeleteComment (m DELETE (slug </> s "comments" </> commentId))
+        , map Favourite (m POST (slug </> s "favourite"))
+        , map Unfavourite (m DELETE (slug </> s "favourite"))
         ]
