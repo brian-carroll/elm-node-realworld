@@ -112,7 +112,7 @@ will have an effect.
     --> True
 
 -}
-m : Method -> Parser a a -> Parser a a
+m : Method -> Parser a b -> Parser a b
 m requiredMethod (Parser parser) =
     Parser <|
         \state ->

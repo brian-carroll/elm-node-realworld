@@ -396,4 +396,38 @@ Feels like Method should be part of the routing though.
         - can I make a parser for route and method? Would it help?
 
 
+## Route parsing errors
+- Can't tell the difference between NotFound and MethodNotAllowed
+- UrlParser lib uses List instead of Result. Why?
+- List functions used in 4 relevant places
+    - oneOf
+        - uses concatMap to try a bunch of parsers and pick out only the successful ones. Neat solution. Could also pick out only the Ok's from a List of Results though.
+    - <?>
+        - Empty list used as error state (List.concatMap -> Result.map)
+    - </>
+        - Empty list used as error state (List.concatMap -> Result.map)
+    - map
+        - Empty list used as error state (List.map -> Result.map)
+- alternative oneOf
+    - `List.map` the parser over the `List`
+        - If `any` of them is `Ok`, then produce a final `Result` from it
+        - (Change the overall output type to `Result` instead of `Maybe`)
+        - If `any` of the errors are because of method only, then that's the `Err` we return
+        - This is like a `max` function
+        - `Ok` > `Err MethodNotMatched` > `Err UrlNotFound`
+        - Could use `List.Extra.maximumWith`
+        - Or custom tail recursive function bailing on first `Ok` (but not on first `Err MethodNotMatched`)
+        - Initial state for the recursion is `Err UrlNotFound` as that makes sense for empty list of parsers
+        - call it `bestMatch`?
+    - use a type of `Result ParseError route`
 
+```elm
+    ParseError
+        = MethodNotMatched
+        | UrlNotFound
+```
+
+
+## Types
+- Route is used in two places for two different things
+- Could actually just pass in the whole Request, why not? Use extensible record.

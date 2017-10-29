@@ -127,10 +127,3 @@ type alias Response =
     , headers : Dict String String
     , body : String
     }
-
-
-type Method
-    = Get
-    | Post
-    | Put
-    | Delete

@@ -10,17 +10,15 @@ import Json.Encode as JE
 import Types exposing (..)
 import Routes.Parser exposing (Parser, Route, oneOf, map, s, (</>), parseRoute)
 import Routes.Users exposing (UsersRoute, urlParserUsers, urlParserUser)
-
-
--- import Routes.Profiles exposing (ProfilesRoute)
--- import Routes.Articles exposing (ArticlesRoute)
--- import Routes.Tags exposing (TagsRoute)
+import Routes.Profiles exposing (ProfilesRoute)
+import Routes.Articles exposing (ArticlesRoute)
+import Routes.Tags exposing (TagsRoute)
 
 
 type Route
-    = Tags --TagsRoute
-    | Profiles --ProfilesRoute
-    | Articles --ArticlesRoute
+    = Tags TagsRoute
+    | Profiles ProfilesRoute
+    | Articles ArticlesRoute
     | Users UsersRoute
 
 
@@ -28,9 +26,9 @@ routeParser : Parser (Route -> parserState) parserState
 routeParser =
     s "api"
         </> oneOf
-                [ map Tags (s "tags") -- </> Routes.Tags.urlParser)
-                , map Profiles (s "profiles") -- </> Routes.Profiles.urlParser)
-                , map Articles (s "articles") -- </> Routes.Articles.urlParser)
+                [ map Tags (s "tags" </> Routes.Tags.routeParser)
+                , map Profiles (s "profiles" </> Routes.Profiles.routeParser)
+                , map Articles (s "articles" </> Routes.Articles.routeParser)
                 , map Users (s "users" </> urlParserUsers)
                 , map Users (s "user" </> urlParserUser)
                 ]
@@ -46,17 +44,13 @@ dispatch config conn =
                     (Route conn.request.method conn.request.url)
     in
         case route of
-            Just Tags ->
-                --(tagsRoute) ->
+            Just (Tags tagsRoute) ->
                 HandlerData JE.null
 
-            Just Profiles ->
-                -- profilesRoute) ->
-                -- Routes.Profiles.dispatch config conn profilesRoute
-                HandlerData JE.null
+            Just (Profiles profilesRoute) ->
+                Routes.Profiles.dispatch config conn profilesRoute
 
-            Just Articles ->
-                -- articlesRoute) ->
+            Just (Articles articlesRoute) ->
                 HandlerData JE.null
 
             Just (Users usersRoute) ->

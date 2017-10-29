@@ -1,17 +1,12 @@
 module Routes.Tags exposing (..)
 
-import Routes.Parser exposing (Parser, top, map)
-
-
-{-
-   get  '/tags/'
--}
+import Routes.Parser exposing (Parser, Method(..), m, top, map)
 
 
 type TagsRoute
     = Tags
 
 
-urlParser : Parser (TagsRoute -> parserState) parserState
-urlParser =
-    map Tags top
+routeParser : Parser (TagsRoute -> parserState) parserState
+routeParser =
+    map Tags (m GET top)

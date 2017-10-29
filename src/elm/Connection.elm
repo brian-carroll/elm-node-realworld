@@ -31,29 +31,6 @@ decodeRequest =
         (JD.field "body" JD.string)
 
 
-decodeMethod : JD.Decoder Method
-decodeMethod =
-    JD.string
-        |> JD.andThen
-            (\s ->
-                case s of
-                    "GET" ->
-                        JD.succeed Get
-
-                    "POST" ->
-                        JD.succeed Post
-
-                    "PUT" ->
-                        JD.succeed Put
-
-                    "DELETE" ->
-                        JD.succeed Delete
-
-                    _ ->
-                        JD.fail "Method"
-            )
-
-
 decodeResponse : JD.Decoder Response
 decodeResponse =
     JD.map4 Response

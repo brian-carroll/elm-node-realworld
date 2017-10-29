@@ -1,14 +1,10 @@
-module Routes.Profiles exposing (..)
-
--- library imports
-
-import Routes.Parser exposing (Parser, (</>), s, string, map, oneOf, parseString, top)
-
+module Routes.Profiles exposing (ProfilesRoute, routeParser, dispatch)
 
 -- local imports
 
 import Types exposing (..)
 import HandlerState exposing (andThen, onError, tryTask, wrapErrString, map2, map3)
+import Routes.Parser exposing (Parser, Method(..), m, (</>), s, string, map, oneOf)
 import Routes.Api exposing (requireAuth)
 import Models.User
     exposing
@@ -20,46 +16,36 @@ import Models.User
 
 
 type ProfilesRoute
-    = ShowProfile Username
-    | FollowProfile Username
+    = GetProfile Username
+    | FollowUser Username
+    | UnfollowUser Username
 
 
-urlParser : Parser (ProfilesRoute -> parserState) parserState
-urlParser =
+parseUsername : Parser (Username -> state) state
+parseUsername =
+    map Username string
+
+
+routeParser : Parser (ProfilesRoute -> state) state
+routeParser =
     oneOf
-        [ map (ShowProfile << Username) string
-        , map (FollowProfile << Username) (string </> s "follow")
+        [ map GetProfile (m GET parseUsername)
+        , map FollowUser (m POST (parseUsername </> s "follow"))
+        , map UnfollowUser (m DELETE (parseUsername </> s "follow"))
         ]
 
 
 dispatch : ProgramConfig -> Connection -> ProfilesRoute -> EndpointState
 dispatch config conn route =
-    let
-        method =
-            conn.request.method
+    case route of
+        GetProfile username ->
+            getProfile config.secret username conn
 
-        methodNotAllowedError =
-            HandlerError { status = MethodNotAllowed, messages = [] }
-    in
-        case route of
-            ShowProfile username ->
-                case method of
-                    Get ->
-                        getProfile config.secret username conn
+        FollowUser username ->
+            followProfile config.secret username conn
 
-                    _ ->
-                        methodNotAllowedError
-
-            FollowProfile username ->
-                case method of
-                    Post ->
-                        followProfile config.secret username conn
-
-                    Delete ->
-                        unfollowProfile config.secret username conn
-
-                    _ ->
-                        methodNotAllowedError
+        UnfollowUser username ->
+            unfollowProfile config.secret username conn
 
 
 getProfile : Secret -> Username -> Connection -> EndpointState
