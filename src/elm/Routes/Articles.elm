@@ -1,6 +1,6 @@
 module Routes.Articles exposing (..)
 
-import UrlParser exposing (Parser, (</>), s, string, map, oneOf, parseString, top)
+import Routes.Parser exposing (Parser, (</>), s, string, map, oneOf, parseString, top)
 import Types exposing (..)
 
 

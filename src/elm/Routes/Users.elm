@@ -3,7 +3,7 @@ module Routes.Users exposing (..)
 -- library imports
 
 import Json.Decode as JD
-import UrlParser exposing (Parser, s, top, map, oneOf)
+import Routes.Parser exposing (Parser, Method(..), s, m, top, map, oneOf)
 
 
 -- local imports
@@ -31,20 +31,24 @@ import Models.User
 type UsersRoute
     = Register
     | Login
-    | CurrentUser
+    | GetCurrentUser
+    | UpdateUser
 
 
 urlParserUsers : Parser (UsersRoute -> parserState) parserState
 urlParserUsers =
     oneOf
-        [ map Register top
-        , map Login (s "login")
+        [ map Register (m POST top)
+        , map Login (m POST (s "login"))
         ]
 
 
 urlParserUser : Parser (UsersRoute -> parserState) parserState
 urlParserUser =
-    map CurrentUser top
+    oneOf
+        [ map GetCurrentUser (m GET top)
+        , map GetCurrentUser (m GET top)
+        ]
 
 
 dispatch : ProgramConfig -> Connection -> UsersRoute -> EndpointState
@@ -58,31 +62,16 @@ dispatch config conn route =
     in
         case route of
             Register ->
-                case method of
-                    Post ->
-                        register config.secret conn
-
-                    _ ->
-                        methodNotAllowedError
+                register config.secret conn
 
             Login ->
-                case method of
-                    Post ->
-                        login config.secret conn
+                login config.secret conn
 
-                    _ ->
-                        methodNotAllowedError
+            GetCurrentUser ->
+                getCurrentUser config.secret conn
 
-            CurrentUser ->
-                case method of
-                    Get ->
-                        getCurrentUser config.secret conn
-
-                    Put ->
-                        putCurrentUser config.secret conn
-
-                    _ ->
-                        methodNotAllowedError
+            UpdateUser ->
+                updateUser config.secret conn
 
 
 type alias RegistrationForm =
@@ -220,8 +209,8 @@ putUserFormDecoder =
             (JD.maybe (JD.field "password" JD.string))
 
 
-putCurrentUser : Secret -> Connection -> EndpointState
-putCurrentUser secret conn =
+updateUser : Secret -> Connection -> EndpointState
+updateUser secret conn =
     let
         username =
             requireAuth secret conn

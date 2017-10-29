@@ -25,7 +25,7 @@ decodeConnection connectionId =
 decodeRequest : JD.Decoder Request
 decodeRequest =
     JD.map4 Request
-        (JD.field "method" decodeMethod)
+        (JD.field "method" JD.string)
         (JD.field "url" JD.string)
         (JD.field "headers" <| JD.dict JD.string)
         (JD.field "body" JD.string)

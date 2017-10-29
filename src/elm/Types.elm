@@ -114,7 +114,7 @@ type ErrorCode
 
 
 type alias Request =
-    { method : Method
+    { method : String
     , url : String
     , headers : Dict String String
     , body : String

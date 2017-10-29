@@ -1,28 +1,36 @@
 module Routes exposing (..)
 
-import UrlParser exposing (Parser, oneOf, map, s, (</>), parseString)
-import Types exposing (..)
-import Routes.Users exposing (UsersRoute, urlParserUsers, urlParserUser)
-import Routes.Profiles exposing (ProfilesRoute)
-import Routes.Articles exposing (ArticlesRoute)
-import Routes.Tags exposing (TagsRoute)
+-- external imports
+
 import Json.Encode as JE
 
 
+-- local imports
+
+import Types exposing (..)
+import Routes.Parser exposing (Parser, Route, oneOf, map, s, (</>), parseRoute)
+import Routes.Users exposing (UsersRoute, urlParserUsers, urlParserUser)
+
+
+-- import Routes.Profiles exposing (ProfilesRoute)
+-- import Routes.Articles exposing (ArticlesRoute)
+-- import Routes.Tags exposing (TagsRoute)
+
+
 type Route
-    = Tags TagsRoute
-    | Profiles ProfilesRoute
-    | Articles ArticlesRoute
+    = Tags --TagsRoute
+    | Profiles --ProfilesRoute
+    | Articles --ArticlesRoute
     | Users UsersRoute
 
 
-urlParser : Parser (Route -> parserState) parserState
-urlParser =
+routeParser : Parser (Route -> parserState) parserState
+routeParser =
     s "api"
         </> oneOf
-                [ map Tags (s "tags" </> Routes.Tags.urlParser)
-                , map Profiles (s "profiles" </> Routes.Profiles.urlParser)
-                , map Articles (s "articles" </> Routes.Articles.urlParser)
+                [ map Tags (s "tags") -- </> Routes.Tags.urlParser)
+                , map Profiles (s "profiles") -- </> Routes.Profiles.urlParser)
+                , map Articles (s "articles") -- </> Routes.Articles.urlParser)
                 , map Users (s "users" </> urlParserUsers)
                 , map Users (s "user" </> urlParserUser)
                 ]
@@ -30,18 +38,29 @@ urlParser =
 
 dispatch : ProgramConfig -> Connection -> EndpointState
 dispatch config conn =
-    case Debug.log "Route" (parseString urlParser conn.request.url) of
-        Just (Tags tagsRoute) ->
-            HandlerData JE.null
+    let
+        route =
+            Debug.log "Route" <|
+                parseRoute
+                    routeParser
+                    (Route conn.request.method conn.request.url)
+    in
+        case route of
+            Just Tags ->
+                --(tagsRoute) ->
+                HandlerData JE.null
 
-        Just (Profiles profilesRoute) ->
-            Routes.Profiles.dispatch config conn profilesRoute
+            Just Profiles ->
+                -- profilesRoute) ->
+                -- Routes.Profiles.dispatch config conn profilesRoute
+                HandlerData JE.null
 
-        Just (Articles articlesRoute) ->
-            HandlerData JE.null
+            Just Articles ->
+                -- articlesRoute) ->
+                HandlerData JE.null
 
-        Just (Users usersRoute) ->
-            Routes.Users.dispatch config conn usersRoute
+            Just (Users usersRoute) ->
+                Routes.Users.dispatch config conn usersRoute
 
-        Nothing ->
-            HandlerError { status = NotFound, messages = [] }
+            Nothing ->
+                HandlerError { status = NotFound, messages = [] }

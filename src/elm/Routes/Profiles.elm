@@ -2,7 +2,7 @@ module Routes.Profiles exposing (..)
 
 -- library imports
 
-import UrlParser exposing (Parser, (</>), s, string, map, oneOf, parseString, top)
+import Routes.Parser exposing (Parser, (</>), s, string, map, oneOf, parseString, top)
 
 
 -- local imports

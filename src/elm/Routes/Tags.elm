@@ -1,6 +1,6 @@
 module Routes.Tags exposing (..)
 
-import UrlParser exposing (Parser, top, map)
+import Routes.Parser exposing (Parser, top, map)
 
 
 {-
