@@ -70,6 +70,9 @@ defaultHeaders =
 mapHttpStatus : ErrorCode -> Int
 mapHttpStatus code =
     case code of
+        BadRequest ->
+            400
+
         Unauthorized ->
             401
 

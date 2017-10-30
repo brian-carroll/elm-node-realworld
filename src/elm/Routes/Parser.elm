@@ -1,6 +1,7 @@
 module Routes.Parser
     exposing
         ( Parser
+        , ParseError(..)
         , Method(..)
         , Route
         , string
@@ -43,6 +44,12 @@ type alias Route =
     { method : String
     , url : String
     }
+
+
+type ParseError
+    = UrlMismatch
+    | MethodMismatch
+    | BadQueryString
 
 
 
@@ -260,29 +267,36 @@ customParam : String -> (Maybe String -> a) -> QueryParser (a -> b) b
 customParam key func =
     QueryParser <|
         \{ method, visited, unvisited, params, value } ->
-            [ State method visited unvisited params (value (func (Dict.get key params))) ]
+            [ State
+                method
+                visited
+                unvisited
+                params
+                (value (func (Dict.get key params)))
+            ]
 
 
 
 -- RUN A PARSER
 
 
-parseRoute : Parser (a -> a) a -> Route -> Maybe a
+parseRoute : Parser (a -> a) a -> Route -> Result ParseError a
 parseRoute parser { method, url } =
-    splitPathAndQuery url
-        |> Maybe.andThen
-            (\( pathString, queryParams ) ->
-                parse parser { method = method, url = pathString } queryParams
-            )
+    case splitPathAndQuery url of
+        Nothing ->
+            Err BadQueryString
+
+        Just ( pathString, queryParams ) ->
+            parse parser { method = method, url = pathString } queryParams
 
 
 
 -- PARSER HELPERS
 
 
-parse : Parser (a -> a) a -> Route -> Dict String String -> Maybe a
+parse : Parser (a -> a) a -> Route -> Dict String String -> Result ParseError a
 parse (Parser parser) { method, url } params =
-    (parseHelp method) <|
+    (parseHelp UrlMismatch method) <|
         parser <|
             { method = ""
             , visited = []
@@ -292,11 +306,11 @@ parse (Parser parser) { method, url } params =
             }
 
 
-parseHelp : String -> List (State a) -> Maybe a
-parseHelp method states =
+parseHelp : ParseError -> String -> List (State a) -> Result ParseError a
+parseHelp leastBadError method states =
     case states of
         [] ->
-            Nothing
+            Err leastBadError
 
         state :: rest ->
             let
@@ -314,10 +328,12 @@ parseHelp method states =
                         _ ->
                             False
             in
-                if urlMatch && methodMatch then
-                    Just state.value
+                if not urlMatch then
+                    parseHelp leastBadError method rest
+                else if not methodMatch then
+                    parseHelp MethodMismatch method rest
                 else
-                    parseHelp method rest
+                    Ok state.value
 
 
 splitPathAndQuery : String -> Maybe ( String, Dict String String )

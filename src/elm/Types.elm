@@ -105,7 +105,8 @@ type alias Connection =
 
 
 type ErrorCode
-    = Unauthorized
+    = BadRequest
+    | Unauthorized
     | Forbidden
     | NotFound
     | MethodNotAllowed

@@ -8,7 +8,7 @@ import Json.Encode as JE
 -- local imports
 
 import Types exposing (..)
-import Routes.Parser exposing (Parser, Route, oneOf, map, s, (</>), parseRoute)
+import Routes.Parser exposing (Parser, ParseError(..), Route, oneOf, map, s, (</>), parseRoute)
 import Routes.Users exposing (UsersRoute, urlParserUsers, urlParserUser)
 import Routes.Profiles exposing (ProfilesRoute)
 import Routes.Articles exposing (ArticlesRoute)
@@ -44,17 +44,27 @@ dispatch config conn =
                     (Route conn.request.method conn.request.url)
     in
         case route of
-            Just (Tags tagsRoute) ->
-                HandlerData JE.null
+            Ok subroute ->
+                case subroute of
+                    Tags tagsRoute ->
+                        HandlerData JE.null
 
-            Just (Profiles profilesRoute) ->
-                Routes.Profiles.dispatch config conn profilesRoute
+                    Profiles profilesRoute ->
+                        Routes.Profiles.dispatch config conn profilesRoute
 
-            Just (Articles articlesRoute) ->
-                HandlerData JE.null
+                    Articles articlesRoute ->
+                        HandlerData JE.null
 
-            Just (Users usersRoute) ->
-                Routes.Users.dispatch config conn usersRoute
+                    Users usersRoute ->
+                        Routes.Users.dispatch config conn usersRoute
 
-            Nothing ->
-                HandlerError { status = NotFound, messages = [] }
+            Err parseError ->
+                case parseError of
+                    UrlMismatch ->
+                        HandlerError { status = NotFound, messages = [] }
+
+                    MethodMismatch ->
+                        HandlerError { status = MethodNotAllowed, messages = [] }
+
+                    BadQueryString ->
+                        HandlerError { status = BadRequest, messages = [] }
