@@ -3,7 +3,7 @@ module Routes.Users exposing (..)
 -- library imports
 
 import Json.Decode as JD
-import Routes.Parser exposing (Parser, Method(..), s, m, top, map, oneOf)
+import Routes.Parser exposing (RouteParser, Parser, Method(..), s, m, top, map, oneOf)
 
 
 -- local imports
@@ -35,7 +35,7 @@ type UsersRoute
     | UpdateUser
 
 
-urlParserUsers : Parser (UsersRoute -> parserState) parserState
+urlParserUsers : RouteParser (UsersRoute -> parserState) parserState
 urlParserUsers =
     oneOf
         [ map Register (m POST top)
@@ -43,7 +43,7 @@ urlParserUsers =
         ]
 
 
-urlParserUser : Parser (UsersRoute -> parserState) parserState
+urlParserUser : RouteParser (UsersRoute -> parserState) parserState
 urlParserUser =
     oneOf
         [ map GetCurrentUser (m GET top)

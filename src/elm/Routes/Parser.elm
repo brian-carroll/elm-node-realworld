@@ -1,6 +1,7 @@
 module Routes.Parser
     exposing
-        ( Parser
+        ( RouteParser
+        , Parser
         , Method(..)
         , Route
         , string
@@ -51,8 +52,8 @@ type alias Route =
 
 {-| Turn method & URL path into nice Elm data
 -}
-type Parser a b
-    = Parser (State a -> List (State b))
+type alias RouteParser a b =
+    Parser { method : String } a b
 
 
 type alias State value =
@@ -64,13 +65,26 @@ type alias State value =
     }
 
 
+type Parser m a b
+    = Parser (UrlState m a -> List (UrlState m b))
+
+
+type alias UrlState m value =
+    { m
+        | visited : List String
+        , unvisited : List String
+        , params : Dict String String
+        , value : value
+    }
+
+
 
 -- PARSE SEGMENTS
 
 
 {-| Parse a segment of the path as a `String`.
 -}
-string : Parser (String -> a) a
+string : Parser m (String -> a) a
 string =
     custom "STRING" <|
         \segment ->
@@ -82,24 +96,24 @@ string =
 
 {-| Parse a segment of the path as an `Int`.
 -}
-int : Parser (Int -> a) a
+int : Parser m (Int -> a) a
 int =
     custom "NUMBER" String.toInt
 
 
 {-| Parse a segment of the path if it matches a given string.
 -}
-s : String -> Parser a a
+s : String -> Parser m a a
 s str =
     Parser <|
-        \{ method, visited, unvisited, params, value } ->
-            case unvisited of
+        \state ->
+            case state.unvisited of
                 [] ->
                     []
 
                 next :: rest ->
                     if next == str then
-                        [ State method (next :: visited) rest params value ]
+                        [ { state | visited = (next :: state.visited), unvisited = rest } ]
                     else
                         []
 
@@ -112,14 +126,17 @@ will have an effect.
     --> True
 
 -}
-m : Method -> Parser a b -> Parser a b
+m : Method -> RouteParser a b -> RouteParser a b
 m requiredMethod (Parser parser) =
-    Parser <|
-        \state ->
+    let
+        f : State a -> List (State b)
+        f state =
             if state.method /= toString requiredMethod then
                 []
             else
                 parser state
+    in
+        Parser f
 
 
 {-| Create a custom path segment parser. Here is how it is used to define the
@@ -129,18 +146,18 @@ m requiredMethod (Parser parser) =
         custom "NUMBER" String.toInt
 
 -}
-custom : String -> (String -> Result String a) -> Parser (a -> b) b
+custom : String -> (String -> Result String a) -> Parser m (a -> b) b
 custom tipe stringToSomething =
     Parser <|
-        \{ method, visited, unvisited, params, value } ->
-            case unvisited of
+        \state ->
+            case state.unvisited of
                 [] ->
                     []
 
                 next :: rest ->
                     case stringToSomething next of
                         Ok nextValue ->
-                            [ State method (next :: visited) rest params (value nextValue) ]
+                            [ { state | visited = (next :: state.visited), unvisited = rest, value = (state.value nextValue) } ]
 
                         Err msg ->
                             []
@@ -152,7 +169,7 @@ custom tipe stringToSomething =
 
 {-| Parse a path with multiple segments.
 -}
-(</>) : Parser a b -> Parser b c -> Parser a c
+(</>) : Parser m a b -> Parser m b c -> Parser m a c
 (</>) (Parser parseBefore) (Parser parseAfter) =
     Parser <|
         \state ->
@@ -160,38 +177,32 @@ custom tipe stringToSomething =
 infixr 7 </>
 
 
-map : a -> Parser a b -> Parser (b -> c) c
+map : a -> Parser m a b -> Parser m (b -> c) c
 map subValue (Parser parse) =
     Parser <|
-        \{ method, visited, unvisited, params, value } ->
-            List.map (mapHelp value) <|
+        \state ->
+            List.map (mapHelp state.value) <|
                 parse <|
-                    { method = method
-                    , visited = visited
-                    , unvisited = unvisited
-                    , params = params
-                    , value = subValue
+                    { state
+                        | value = subValue
                     }
 
 
-mapHelp : (a -> b) -> State a -> State b
-mapHelp func { method, visited, unvisited, params, value } =
-    { method = method
-    , visited = visited
-    , unvisited = unvisited
-    , params = params
-    , value = func value
+mapHelp : (a -> b) -> UrlState m a -> UrlState m b
+mapHelp func state =
+    { state
+        | value = func state.value
     }
 
 
-oneOf : List (Parser a b) -> Parser a b
+oneOf : List (Parser m a b) -> Parser m a b
 oneOf parsers =
     Parser <|
         \state ->
             List.concatMap (\(Parser parser) -> parser state) parsers
 
 
-top : Parser a a
+top : Parser m a a
 top =
     Parser <| \state -> [ state ]
 
@@ -202,13 +213,13 @@ top =
 
 {-| Turn query parameters like `?name=tom&age=42` into nice Elm data.
 -}
-type QueryParser a b
-    = QueryParser (State a -> List (State b))
+type QueryParser m a b
+    = QueryParser (UrlState m a -> List (UrlState m b))
 
 
 {-| Parse some query parameters.
 -}
-(<?>) : Parser a b -> QueryParser b c -> Parser a c
+(<?>) : Parser m a b -> QueryParser m b c -> Parser m a c
 (<?>) (Parser parser) (QueryParser queryParser) =
     Parser <|
         \state ->
@@ -218,7 +229,7 @@ infixl 8 <?>
 
 {-| Parse a query parameter as a `String`.
 -}
-stringParam : String -> QueryParser (Maybe String -> a) a
+stringParam : String -> QueryParser m (Maybe String -> a) a
 stringParam name =
     customParam name identity
 
@@ -227,7 +238,7 @@ stringParam name =
 search results. You could have a `start` query parameter to say which result
 should appear first.
 -}
-intParam : String -> QueryParser (Maybe Int -> a) a
+intParam : String -> QueryParser m (Maybe Int -> a) a
 intParam name =
     customParam name intParamHelp
 
@@ -255,18 +266,18 @@ scenario. We can use that data to decide if they should be added.
 [here]: https://github.com/evancz/url-parser/issues
 
 -}
-customParam : String -> (Maybe String -> a) -> QueryParser (a -> b) b
+customParam : String -> (Maybe String -> a) -> QueryParser m (a -> b) b
 customParam key func =
     QueryParser <|
-        \{ method, visited, unvisited, params, value } ->
-            [ State method visited unvisited params (value (func (Dict.get key params))) ]
+        \state ->
+            [ { state | value = (state.value (func (Dict.get key state.params))) } ]
 
 
 
 -- RUN A PARSER
 
 
-parseRoute : Parser (a -> a) a -> Route -> Maybe a
+parseRoute : RouteParser (a -> a) a -> Route -> Maybe a
 parseRoute parser { method, url } =
     splitPathAndQuery url
         |> Maybe.andThen
@@ -279,7 +290,7 @@ parseRoute parser { method, url } =
 -- PARSER HELPERS
 
 
-parse : Parser (a -> a) a -> Route -> Dict String String -> Maybe a
+parse : RouteParser (a -> a) a -> Route -> Dict String String -> Maybe a
 parse (Parser parser) { method, url } params =
     parseHelp <|
         parser <|

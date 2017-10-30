@@ -4,7 +4,7 @@ module Routes.Profiles exposing (ProfilesRoute, routeParser, dispatch)
 
 import Types exposing (..)
 import HandlerState exposing (andThen, onError, tryTask, wrapErrString, map2, map3)
-import Routes.Parser exposing (Parser, Method(..), m, (</>), s, string, map, oneOf)
+import Routes.Parser exposing (RouteParser, Parser, Method(..), m, (</>), s, string, map, oneOf)
 import Routes.Api exposing (requireAuth)
 import Models.User
     exposing
@@ -21,12 +21,12 @@ type ProfilesRoute
     | UnfollowUser Username
 
 
-parseUsername : Parser (Username -> state) state
+parseUsername : Parser m (Username -> state) state
 parseUsername =
     map Username string
 
 
-routeParser : Parser (ProfilesRoute -> state) state
+routeParser : RouteParser (ProfilesRoute -> state) state
 routeParser =
     oneOf
         [ map GetProfile (m GET parseUsername)

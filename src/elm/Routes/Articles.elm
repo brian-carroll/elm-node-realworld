@@ -1,6 +1,6 @@
 module Routes.Articles exposing (ArticlesRoute, routeParser)
 
-import Routes.Parser exposing (Parser, Method(..), m, (</>), s, string, map, oneOf, parseRoute, top)
+import Routes.Parser exposing (RouteParser, Parser, Method(..), m, (</>), s, string, map, oneOf, parseRoute, top)
 import Types exposing (..)
 
 
@@ -26,17 +26,17 @@ type ArticlesRoute
     | Unfavourite Slug
 
 
-slug : Parser (Slug -> state) state
+slug : Parser m (Slug -> state) state
 slug =
     map Slug string
 
 
-commentId : Parser (CommentId -> state) state
+commentId : Parser m (CommentId -> state) state
 commentId =
     map CommentId string
 
 
-routeParser : Parser (ArticlesRoute -> state) state
+routeParser : RouteParser (ArticlesRoute -> state) state
 routeParser =
     oneOf
         [ map ListArticles (m GET top)

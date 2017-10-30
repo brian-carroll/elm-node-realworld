@@ -8,7 +8,7 @@ import Json.Encode as JE
 -- local imports
 
 import Types exposing (..)
-import Routes.Parser exposing (Parser, Route, oneOf, map, s, (</>), parseRoute)
+import Routes.Parser exposing (RouteParser, Route, oneOf, map, s, (</>), parseRoute)
 import Routes.Users exposing (UsersRoute, urlParserUsers, urlParserUser)
 import Routes.Profiles exposing (ProfilesRoute)
 import Routes.Articles exposing (ArticlesRoute)
@@ -22,7 +22,7 @@ type Route
     | Users UsersRoute
 
 
-routeParser : Parser (Route -> parserState) parserState
+routeParser : RouteParser (Route -> parserState) parserState
 routeParser =
     s "api"
         </> oneOf
