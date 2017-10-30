@@ -420,12 +420,28 @@ Feels like Method should be part of the routing though.
         - Initial state for the recursion is `Err UrlNotFound` as that makes sense for empty list of parsers
         - call it `bestMatch`?
     - use a type of `Result ParseError route`
+        ```elm
+        ParseError
+            = MethodNotMatched
+            | UrlNotFound
+        ```
+- requiring method to be specified
+    - currently if you forget to specify a method, you match any method, which is shit
+    - Ideally that should be a type error!
+        - Whoa
+        - So the Parser is the wrong type unless it has a method somewhere
+        - Type mismatch with what?
+        - `parseRoute` only accepts records with method
+        - but other functions operate on extensible records that may or may not have a method field
+        - so it's not exactly the right type of State unless you apply a method
+    - In parser state.method, instead of a String, use a union type
+        ```elm
+        MethodMatchStatus
+            = Unmatched Method
+            | Matched
+        ```
+        - Does this remove the need for the `ParseError` type?
 
-```elm
-    ParseError
-        = MethodNotMatched
-        | UrlNotFound
-```
 
 
 ## Types
