@@ -114,12 +114,13 @@ will have an effect.
 -}
 m : Method -> Parser a b -> Parser a b
 m requiredMethod (Parser parser) =
-    Parser <|
-        \state ->
-            if state.method /= toString requiredMethod then
-                []
-            else
-                parser state
+    let
+        newParser state =
+            parser state
+                |> List.map
+                    (\s -> { s | method = toString requiredMethod })
+    in
+        Parser newParser
 
 
 {-| Create a custom path segment parser. Here is how it is used to define the
@@ -281,9 +282,9 @@ parseRoute parser { method, url } =
 
 parse : Parser (a -> a) a -> Route -> Dict String String -> Maybe a
 parse (Parser parser) { method, url } params =
-    parseHelp <|
+    (parseHelp method) <|
         parser <|
-            { method = method
+            { method = ""
             , visited = []
             , unvisited = splitUrl url
             , params = params
@@ -291,22 +292,32 @@ parse (Parser parser) { method, url } params =
             }
 
 
-parseHelp : List (State a) -> Maybe a
-parseHelp states =
+parseHelp : String -> List (State a) -> Maybe a
+parseHelp method states =
     case states of
         [] ->
             Nothing
 
         state :: rest ->
-            case state.unvisited of
-                [] ->
-                    Just state.value
+            let
+                methodMatch =
+                    state.method == method
 
-                [ "" ] ->
-                    Just state.value
+                urlMatch =
+                    case state.unvisited of
+                        [] ->
+                            True
 
-                _ ->
-                    parseHelp rest
+                        [ "" ] ->
+                            True
+
+                        _ ->
+                            False
+            in
+                if urlMatch && methodMatch then
+                    Just state.value
+                else
+                    parseHelp method rest
 
 
 splitPathAndQuery : String -> Maybe ( String, Dict String String )
