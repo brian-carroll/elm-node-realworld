@@ -399,7 +399,7 @@ Feels like Method should be part of the routing though.
 ## Route parsing errors
 - Can't tell the difference between NotFound and MethodNotAllowed
 - UrlParser lib uses List instead of Result. Why?
-- List functions used in 4 relevant places
+- Lists expected in a few places
     - oneOf
         - uses concatMap to try a bunch of parsers and pick out only the successful ones. Neat solution. Could also pick out only the Ok's from a List of Results though.
     - <?>
@@ -408,6 +408,10 @@ Feels like Method should be part of the routing though.
         - Empty list used as error state (List.concatMap -> Result.map)
     - map
         - Empty list used as error state (List.map -> Result.map)
+    - parseHelp
+        - Iterates through a list of states from `oneOf`,
+        getting rid of *partly-matched routes* (yeah of course, that's a thing!)
+        - Bails on first fully-matched route
 - alternative oneOf
     - `List.map` the parser over the `List`
         - If `any` of them is `Ok`, then produce a final `Result` from it
