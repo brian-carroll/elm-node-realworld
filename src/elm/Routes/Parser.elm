@@ -306,6 +306,13 @@ parse (Parser parser) { method, url } params =
             }
 
 
+{-| Find the best match out of the available parsers
+
+  - If the URL and method match, return `Ok`
+  - If the URL matches but the method doesn't, return `Err MethodMismatch`
+  - If the URL doesn't match (regardless of method), return `Err UrlMismatch`
+
+-}
 parseHelp : ParseError -> String -> List (State a) -> Result ParseError a
 parseHelp leastBadError method states =
     case states of
