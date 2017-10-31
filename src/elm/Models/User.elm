@@ -18,6 +18,7 @@ module Models.User
         , isFollowing
         , follow
         , unfollow
+        , encodeUserId
         )
 
 -- library imports
@@ -123,15 +124,19 @@ encodeMaybe encoder maybeVal =
             JE.null
 
 
-encodeUserSqlValues : User -> List JE.Value
-encodeUserSqlValues user =
-    (case user.id of
+encodeUserId : UserId -> List JE.Value
+encodeUserId userId =
+    case userId of
         UserId id ->
             [ JE.int id ]
 
         UnsavedUserId ->
             []
-    )
+
+
+encodeUserSqlValues : User -> List JE.Value
+encodeUserSqlValues user =
+    (encodeUserId user.id)
         ++ [ encodeUsername user.username
            , encodeEmail user.email
            , JE.string user.bio
