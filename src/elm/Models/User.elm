@@ -1,6 +1,7 @@
 module Models.User
     exposing
         ( User
+        , UserId(..)
         , Username(..)
         , Email(..)
         , HashAndSalt
@@ -36,7 +37,7 @@ import Models.Utils exposing (matchesRegex)
 
 
 type alias User =
-    { id : Int
+    { id : UserId
     , username : Username
     , email : Email
     , bio : String
@@ -46,12 +47,22 @@ type alias User =
     }
 
 
+type UserId
+    = UserId Int
+    | UnsavedUserId
+
+
 type Username
     = Username String
 
 
 type Email
     = Email String
+
+
+decodeUserId : Decoder UserId
+decodeUserId =
+    JD.map UserId JD.int
 
 
 decodeUsername : Decoder Username
@@ -93,7 +104,7 @@ encodeEmail email =
 decodeUser : Decoder User
 decodeUser =
     JD.map7 User
-        (JD.field "id" JD.int)
+        (JD.field "id" decodeUserId)
         (JD.field "username" decodeUsername)
         (JD.field "email" decodeEmail)
         (JD.field "bio" JD.string)
@@ -114,14 +125,20 @@ encodeMaybe encoder maybeVal =
 
 encodeUserSqlValues : User -> List JE.Value
 encodeUserSqlValues user =
-    [ JE.int user.id
-    , encodeUsername user.username
-    , encodeEmail user.email
-    , JE.string user.bio
-    , encodeMaybe JE.string user.image
-    , JE.string user.hash
-    , JE.string user.salt
-    ]
+    (case user.id of
+        UserId id ->
+            [ JE.int id ]
+
+        UnsavedUserId ->
+            []
+    )
+        ++ [ encodeUsername user.username
+           , encodeEmail user.email
+           , JE.string user.bio
+           , encodeMaybe JE.string user.image
+           , JE.string user.hash
+           , JE.string user.salt
+           ]
 
 
 decodeSqlResults : JD.Decoder a -> JD.Decoder (Result String a)
@@ -184,19 +201,22 @@ findByEmail e =
 save : User -> HandlerState EndpointError User
 save user =
     runSqlQuery (JD.index 0 decodeUser)
-        (case user.id of
-            0 ->
-                { sql =
-                    "INSERT INTO users(username, email, bio, image, hash, salt) VALUES($1,$2,$3,$4,$5,$6) RETURNING *;"
-                , values = List.drop 1 <| encodeUserSqlValues user
-                }
+        { sql =
+            case user.id of
+                UnsavedUserId ->
+                    """
+                    INSERT INTO users(username, email, bio, image, hash, salt)
+                    VALUES($1,$2,$3,$4,$5,$6) RETURNING *;
+                    """
 
-            _ ->
-                { sql =
-                    "UPDATE users SET username=$2, email=$3, bio=$4, image=$5, hash=$6, salt=$7 WHERE id=$1 RETURNING *;"
-                , values = encodeUserSqlValues user
-                }
-        )
+                UserId _ ->
+                    """
+                    UPDATE users SET
+                    username=$2, email=$3, bio=$4, image=$5, hash=$6, salt=$7
+                    WHERE id=$1 RETURNING *;
+                    """
+        , values = encodeUserSqlValues user
+        }
 
 
 follow : Username -> Username -> HandlerState EndpointError ()

@@ -14,6 +14,7 @@ import Routes.Api exposing (requireAuth)
 import Models.User
     exposing
         ( User
+        , UserId(..)
         , Username
         , Email
         , HashAndSalt
@@ -110,7 +111,7 @@ register secret conn =
 
         createUser formData hashAndSalt =
             HandlerData
-                { id = 0
+                { id = UnsavedUserId
                 , username = formData.username
                 , email = formData.email
                 , bio = ""
