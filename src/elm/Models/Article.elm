@@ -1,9 +1,17 @@
 module Article exposing (..)
 
+-- external imports
+
 import Date exposing (Date)
 import Json.Decode as JD
 import Json.Encode as JE
+
+
+-- local imports
+
 import Models.User exposing (UserId, encodeUserId)
+import Models.Utils exposing (runSqlQuery)
+import Types exposing (..)
 
 
 type Slug
@@ -28,10 +36,8 @@ type alias Article =
 
 
 encodeSlug : Slug -> JE.Value
-encodeSlug slug =
-    case slug of
-        Slug str ->
-            JE.string str
+encodeSlug (Slug slug) =
+    JE.string slug
 
 
 encodeArticleForDb : Article -> List JE.Value
@@ -51,24 +57,62 @@ encodeArticleForDb article =
                , JE.string article.title
                , JE.string article.description
                , JE.string article.body
+
+               -- deliberately leave out the dates, let the DB do it
                ]
 
 
+decodeDate : JD.Decoder Date
+decodeDate =
+    JD.string
+        |> JD.andThen
+            (\s ->
+                case Date.fromString s of
+                    Ok d ->
+                        JD.succeed d
 
--- decodeArticleFromDb : JD.Decoder Article
--- decodeArticleFromDb =
-{-
+                    Err e ->
+                        JD.fail e
+            )
 
-   create table if not exists articles
-       ( id serial primary key
-       , author_id int not null references users
-       , slug text not null unique
-       , title text not null
-       , description text not null
-       , body text not null
-       , created_at timestamptz default now()
-       , updated_at timestamptz default now()
-       );
 
-    select to_char(current_timestamp, 'yyyy-mm-ddThh24:mi:ss.msZ')
--}
+decodeArticleFromDb : JD.Decoder Article
+decodeArticleFromDb =
+    JD.map8 Article
+        (JD.field "id" (JD.map ArticleId JD.int))
+        (JD.field "author_id" (JD.map Models.User.UserId JD.int))
+        (JD.field "slug" (JD.map Slug JD.string))
+        (JD.field "title" JD.string)
+        (JD.field "description" JD.string)
+        (JD.field "body" JD.string)
+        (JD.field "createdAt" decodeDate)
+        (JD.field "updatedAt" decodeDate)
+
+
+save : Article -> HandlerState EndpointError Article
+save article =
+    runSqlQuery (JD.index 0 decodeArticleFromDb)
+        { sql =
+            case article.id of
+                UnsavedArticleId ->
+                    """
+                    INSERT INTO article(author_id, slug, title, description, body)
+                    VALUES($1,$2,$3,$4,$5,$6) RETURNING *;
+                    """
+
+                ArticleId _ ->
+                    """
+                    UPDATE users SET
+                    author_id=$2, slug=$3, title=$4, description=$5, body=$6
+                    WHERE id=$1 RETURNING *;
+                    """
+        , values = encodeArticleForDb article
+        }
+
+
+getArticleBySlug : Slug -> HandlerState EndpointError Article
+getArticleBySlug (Slug slug) =
+    runSqlQuery (JD.index 0 decodeArticleFromDb)
+        { sql = "SELECT * FROM articles WHERE slug=$1 LIMIT 1;"
+        , values = [ JE.string slug ]
+        }
