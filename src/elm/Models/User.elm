@@ -6,6 +6,7 @@ module Models.User
         , Email(..)
         , HashAndSalt
         , JwtPayload
+        , findById
         , findByEmail
         , findByUsername
         , decodeEmail
@@ -33,6 +34,7 @@ import JsonWebToken as JWT
 -- app imports
 
 import Types exposing (..)
+import HandlerState exposing (wrapErrString)
 import Models.Utils
     exposing
         ( matchesRegex
@@ -136,6 +138,19 @@ encodeUserSqlValues user =
            , JE.string user.hash
            , JE.string user.salt
            ]
+
+
+findById : UserId -> HandlerState EndpointError User
+findById userId =
+    case userId of
+        UnsavedUserId ->
+            wrapErrString InternalError "Cannot find unsaved user"
+
+        UserId id ->
+            runSqlQuery (JD.index 0 decodeUser)
+                { sql = "SELECT * FROM users WHERE id=$1 LIMIT 1;"
+                , values = [ JE.int id ]
+                }
 
 
 findByUsername : Username -> HandlerState EndpointError User

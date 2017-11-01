@@ -53,7 +53,7 @@ dispatch config conn =
                         Routes.Profiles.dispatch config conn profilesRoute
 
                     Articles articlesRoute ->
-                        HandlerData JE.null
+                        Routes.Articles.dispatch articlesRoute
 
                     Users usersRoute ->
                         Routes.Users.dispatch config conn usersRoute

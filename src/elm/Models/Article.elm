@@ -1,4 +1,4 @@
-module Article exposing (..)
+module Models.Article exposing (..)
 
 -- external imports
 
@@ -85,8 +85,8 @@ decodeArticleFromDb =
         (JD.field "title" JD.string)
         (JD.field "description" JD.string)
         (JD.field "body" JD.string)
-        (JD.field "createdAt" decodeDate)
-        (JD.field "updatedAt" decodeDate)
+        (JD.field "created_at" decodeDate)
+        (JD.field "updated_at" decodeDate)
 
 
 save : Article -> HandlerState EndpointError Article
@@ -96,7 +96,7 @@ save article =
             case article.id of
                 UnsavedArticleId ->
                     """
-                    INSERT INTO article(author_id, slug, title, description, body)
+                    INSERT INTO articles(author_id, slug, title, description, body)
                     VALUES($1,$2,$3,$4,$5,$6) RETURNING *;
                     """
 
@@ -110,9 +110,27 @@ save article =
         }
 
 
+getArticles : HandlerState EndpointError (List Article)
+getArticles =
+    runSqlQuery (JD.list decodeArticleFromDb)
+        { sql = "SELECT * FROM articles;"
+        , values = []
+        }
+
+
+sqlSelectArticle : String
+sqlSelectArticle =
+    """
+    select a.id, author_id, slug, title, description, body,
+        to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at,
+        to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at
+    from articles as a
+    """
+
+
 getArticleBySlug : Slug -> HandlerState EndpointError Article
 getArticleBySlug (Slug slug) =
     runSqlQuery (JD.index 0 decodeArticleFromDb)
-        { sql = "SELECT * FROM articles WHERE slug=$1 LIMIT 1;"
+        { sql = sqlSelectArticle ++ "where slug=$1;"
         , values = [ JE.string slug ]
         }
