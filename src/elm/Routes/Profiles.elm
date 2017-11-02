@@ -5,7 +5,6 @@ module Routes.Profiles exposing (ProfilesRoute, routeParser, dispatch)
 import Types exposing (..)
 import HandlerState exposing (andThen, onError, tryTask, wrapErrString, map2, map3)
 import Routes.Parser exposing (Parser, Method(..), m, (</>), s, string, map, oneOf)
-import Routes.Api exposing (requireAuth)
 import Models.User
     exposing
         ( User
@@ -35,53 +34,45 @@ routeParser =
         ]
 
 
-dispatch : ProgramConfig -> Connection -> ProfilesRoute -> EndpointState
-dispatch config conn route =
+dispatch : HandlerState EndpointError Username -> Connection -> ProfilesRoute -> EndpointState
+dispatch authUsername conn route =
     case route of
-        GetProfile username ->
-            getProfile config.secret username conn
+        GetProfile profileUsername ->
+            getProfile authUsername profileUsername conn
 
-        FollowUser username ->
-            followProfile config.secret username conn
+        FollowUser profileUsername ->
+            followProfile authUsername profileUsername conn
 
-        UnfollowUser username ->
-            unfollowProfile config.secret username conn
+        UnfollowUser profileUsername ->
+            unfollowProfile authUsername profileUsername conn
 
 
-getProfile : Secret -> Username -> Connection -> EndpointState
-getProfile secret profileUsername conn =
+getProfile : HandlerState EndpointError Username -> Username -> Connection -> EndpointState
+getProfile authUsername profileUsername conn =
     let
-        currentUsername =
-            requireAuth secret conn
-                |> andThen (.username >> HandlerData)
-
         profileUser =
             HandlerData profileUsername
                 |> andThen findByUsername
 
         isFollowing =
-            case currentUsername of
+            case authUsername of
                 HandlerError _ ->
                     HandlerData False
 
                 _ ->
                     map2 Models.User.isFollowing
-                        currentUsername
+                        authUsername
                         (HandlerData profileUsername)
     in
         map2 profileObj profileUser isFollowing
 
 
-followProfile : Secret -> Username -> Connection -> EndpointState
-followProfile secret profileUsername conn =
+followProfile : HandlerState EndpointError Username -> Username -> Connection -> EndpointState
+followProfile authUsername profileUsername conn =
     let
-        currentUsername =
-            requireAuth secret conn
-                |> andThen (.username >> HandlerData)
-
         writeFollowToDb =
             map2 Models.User.follow
-                currentUsername
+                authUsername
                 (HandlerData profileUsername)
     in
         writeFollowToDb
@@ -90,16 +81,12 @@ followProfile secret profileUsername conn =
             |> map2 (flip profileObj) (HandlerData True)
 
 
-unfollowProfile : Secret -> Username -> Connection -> EndpointState
-unfollowProfile secret profileUsername conn =
+unfollowProfile : HandlerState EndpointError Username -> Username -> Connection -> EndpointState
+unfollowProfile authUsername profileUsername conn =
     let
-        currentUsername =
-            requireAuth secret conn
-                |> andThen (.username >> HandlerData)
-
         deleteFollowFromDb =
             map2 Models.User.unfollow
-                currentUsername
+                authUsername
                 (HandlerData profileUsername)
     in
         deleteFollowFromDb

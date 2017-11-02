@@ -518,3 +518,28 @@ JD.decodeValue (thingDecoder myQueryThingAlias) myQueryResultRow
     - generate SQL result decoder
     - generate SELECT clause
     - generate values, given a list (of field names)
+
+
+- put secret into connection?
+    - Profiles
+        - requireAuth x3
+    - Users
+        - saveUser (2 def, 2 calls (reg & update))
+            - authObj
+        - authObj x2 (login, currentuser)
+        - requireAuth x2 (currentuser, update)
+            - verifyJWT
+
+- If currentUser goes into conn
+    - login still needs secret
+    - reg still needs it
+    - everything else doesn't, just reuse JWT
+    - can still update expiry
+        - create a fn for this
+        - do it in authObj
+    - authObj is only used for auth endpoints
+        - needs secret
+    - profileObj for articles and comments
+        - no secret
+
+=> So put currentUser into conn but not secret

@@ -10,7 +10,6 @@ import Routes.Parser exposing (Parser, Method(..), s, m, top, map, oneOf)
 
 import Types exposing (..)
 import HandlerState exposing (andThen, onError, tryTask, wrapErrString, map2, map3)
-import Routes.Api exposing (requireAuth)
 import Models.User
     exposing
         ( User
@@ -48,12 +47,17 @@ urlParserUser : Parser (UsersRoute -> parserState) parserState
 urlParserUser =
     oneOf
         [ map GetCurrentUser (m GET top)
-        , map GetCurrentUser (m GET top)
+        , map UpdateUser (m PUT top)
         ]
 
 
-dispatch : ProgramConfig -> Connection -> UsersRoute -> EndpointState
-dispatch config conn route =
+dispatch :
+    Secret
+    -> HandlerState EndpointError Username
+    -> Connection
+    -> UsersRoute
+    -> EndpointState
+dispatch secret authUsername conn route =
     let
         method =
             conn.request.method
@@ -63,16 +67,16 @@ dispatch config conn route =
     in
         case route of
             Register ->
-                register config.secret conn
+                register secret conn
 
             Login ->
-                login config.secret conn
+                login secret conn
 
             GetCurrentUser ->
-                getCurrentUser config.secret conn
+                getCurrentUser secret authUsername conn
 
             UpdateUser ->
-                updateUser config.secret conn
+                updateUser secret authUsername conn
 
 
 type alias RegistrationForm =
@@ -182,10 +186,9 @@ login secret conn =
             |> map2 generateResponse user
 
 
-getCurrentUser : Secret -> Connection -> EndpointState
-getCurrentUser secret conn =
-    requireAuth secret conn
-        |> andThen (.username >> HandlerData)
+getCurrentUser : Secret -> HandlerState EndpointError Username -> Connection -> EndpointState
+getCurrentUser secret authUsername conn =
+    authUsername
         |> andThen findByUsername
         |> andThen (HandlerData << authObj secret conn.timestamp)
 
@@ -210,20 +213,16 @@ putUserFormDecoder =
             (JD.maybe (JD.field "password" JD.string))
 
 
-updateUser : Secret -> Connection -> EndpointState
-updateUser secret conn =
+updateUser : Secret -> HandlerState EndpointError Username -> Connection -> EndpointState
+updateUser secret authUsername conn =
     let
-        username =
-            requireAuth secret conn
-                |> andThen (.username >> HandlerData)
-
         formUser =
             HandlerData conn.request.body
                 |> andThen (JD.decodeString putUserFormDecoder >> HandlerData)
                 |> onError (wrapErrString UnprocessableEntity)
 
         dbUser =
-            username |> andThen findByUsername
+            authUsername |> andThen findByUsername
 
         getHashAndSalt formUser dbUser =
             case formUser.password of

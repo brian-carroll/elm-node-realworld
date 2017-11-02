@@ -337,4 +337,4 @@ verifyJWT secret now token =
                 Ok payload
 
         Err e ->
-            Err <| Debug.log (toString e) "Token invalid"
+            Err <| Debug.log (toString e) "Invalid auth token"
