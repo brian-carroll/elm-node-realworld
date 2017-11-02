@@ -9,7 +9,7 @@ import Json.Encode as JE
 
 import Routes.Parser exposing (Parser, Method(..), m, (</>), s, string, map, oneOf, parseRoute, top)
 import Types exposing (..)
-import Models.User exposing (User, UserId)
+import Models.User exposing (User, UserId, Username)
 import Models.Article exposing (Article, Slug(..))
 import HandlerState exposing (andThen, map2, wrapErrString)
 import Routes.Api exposing (encodeDate)
@@ -60,8 +60,8 @@ routeParser =
         ]
 
 
-dispatch : ArticlesRoute -> EndpointState
-dispatch route =
+dispatch : HandlerState EndpointError Username -> ArticlesRoute -> EndpointState
+dispatch authUsername route =
     case route of
         ListArticles ->
             HandlerData JE.null
@@ -70,7 +70,7 @@ dispatch route =
             HandlerData JE.null
 
         GetArticle slug ->
-            getArticle slug
+            getArticle authUsername slug
 
         CreateArticle ->
             HandlerData JE.null
@@ -132,8 +132,8 @@ encodeMultipleArticles articlesData =
             ]
 
 
-getArticle : Slug -> EndpointState
-getArticle slug =
+getArticle : HandlerState EndpointError Username -> Slug -> EndpointState
+getArticle authUsername slug =
     let
         article =
             Models.Article.getArticleBySlug slug
@@ -144,7 +144,14 @@ getArticle slug =
                 |> andThen Models.User.findById
 
         isFollowing =
-            HandlerData False
+            case authUsername of
+                HandlerError _ ->
+                    HandlerData False
+
+                _ ->
+                    author
+                        |> andThen (.username >> HandlerData)
+                        |> map2 Models.User.isFollowing authUsername
 
         authorProfileObj =
             map2 Models.User.profileObj author isFollowing

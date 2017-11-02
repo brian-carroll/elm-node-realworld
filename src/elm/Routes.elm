@@ -82,7 +82,7 @@ dispatch config conn =
                         Routes.Profiles.dispatch authUsername conn profilesRoute
 
                     Articles articlesRoute ->
-                        Routes.Articles.dispatch articlesRoute
+                        Routes.Articles.dispatch authUsername articlesRoute
 
                     Users usersRoute ->
                         Routes.Users.dispatch config.secret authUsername conn usersRoute
