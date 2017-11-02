@@ -143,6 +143,19 @@ encodeSingleArticle article authorProfileObj =
         JE.object [ ( "article", encodeArticle article authorProfileObj ) ]
 
 
+encodeMultipleArticles : List ( Article, JE.Value ) -> HandlerState x JE.Value
+encodeMultipleArticles articlesData =
+    HandlerData <|
+        JE.object
+            [ ( "articles"
+              , JE.list <|
+                    List.map
+                        (\( article, authorProfileObj ) -> encodeArticle article authorProfileObj)
+                        articlesData
+              )
+            ]
+
+
 getArticle : Slug -> EndpointState
 getArticle slug =
     let

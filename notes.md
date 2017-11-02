@@ -447,7 +447,36 @@ Feels like Method should be part of the routing though.
         - Does this remove the need for the `ParseError` type?
 
 
+## Articles
+- Could do a lot of the work in SQL, does it make sense? Definitely faster but not good code reuse.
+- Should I go directly from SQL to output JSON or convert to an in-between model first?
+    - Performance vs maintainability - use the model!
+- BUT I can retrieve several related DB records at the same time and return several data structures
+    - in general, will need to deal with name clashes
+    - if no name clashes, can just feed same JSON object into all relevant decoders
+    - otherwise need a custom decoder for the big blob of DB rows
+- Could pass a dict of name mappings into an encoder
+    - or a default dict
+    - use either the mapped name or, if there is none, the original name
+    - involves doing a custom version of JD.field with a Dict arg
+    - then I can reuse the same decoder function for different queries even if they have different 'AS' clauses
+        - implies it's better to always default-map everything inside the decoder
+    - alias mapper could also be a function
+```elm
+JD.decodeValue (thingDecoder myQueryThingAlias) myQueryResultRow
 
-## Types
-- Route is used in two places for two different things
-- Could actually just pass in the whole Request, why not? Use extensible record.
+thingDecoder alias =
+    JD.map Thing
+        (JD.field (alias "id") JD.int)
+        (JD.field (alias "name") JD.string)
+        (JD.field (alias "spookiness") JD.float)
+
+myQueryThingAlias fieldName =
+    case fieldName of
+        "thingId" ->
+            "id"
+        "thingName" ->
+            "name"
+        _ ->
+            fieldName
+```
