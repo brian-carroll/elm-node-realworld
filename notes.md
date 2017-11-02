@@ -463,8 +463,35 @@ Feels like Method should be part of the routing though.
         - implies it's better to always default-map everything inside the decoder
     - alias mapper could also be a function
 ```elm
-JD.decodeValue (thingDecoder myQueryThingAlias) myQueryResultRow
+thingDecoder aliasedField =
+    JD.map Thing
+        (aliasedField "id" JD.int)
+        (aliasedField "name" JD.string)
+        (aliasedField "spookiness" JD.float)
 
+mySqlQueryAliases =
+    Dict.fromList
+        [ ("id", "thing_id")
+        , ("name", "thing_name")
+        ]
+
+withAliases dict properFieldName decoder =
+    let
+        sqlName =
+            Dict.get properFieldName dict
+                |> Maybe.withDefault properFieldName
+    in
+        JD.field sqlName decoder
+
+JD.decodeValue
+    (thingDecoder (withAliases mySqlQueryAliases))
+    myQueryResultRow
+
+```
+
+Or, alternatively...
+
+```elm
 thingDecoder alias =
     JD.map Thing
         (JD.field (alias "id") JD.int)
@@ -473,10 +500,21 @@ thingDecoder alias =
 
 myQueryThingAlias fieldName =
     case fieldName of
-        "thingId" ->
+        "thing_id" ->
             "id"
-        "thingName" ->
+        "thing_name" ->
             "name"
         _ ->
             fieldName
+
+JD.decodeValue (thingDecoder myQueryThingAlias) myQueryResultRow
+
 ```
+
+- Easier to just alias everything! Guaranteed namespacing.
+    - Like SqlAlchemy
+- We have a SQL values encoder for everything anyway, just put in the table name too
+- Helper functions
+    - generate SQL result decoder
+    - generate SELECT clause
+    - generate values, given a list (of field names)
