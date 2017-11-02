@@ -10,7 +10,7 @@ import Json.Encode as JE
 -- local imports
 
 import Types exposing (..)
-import HandlerState exposing (andThen, onError, wrapErrString)
+import HandlerState exposing (map, andThen, onError, wrapErrString)
 import Models.User exposing (JwtPayload, verifyJWT)
 
 
@@ -24,7 +24,7 @@ requireAuth secret conn =
             case String.words authHeader of
                 [ "Token", token ] ->
                     HandlerData token
-                        |> andThen (verifyJWT secret conn.timestamp >> HandlerData)
+                        |> map (verifyJWT secret conn.timestamp)
                         |> onError (wrapErrString Unauthorized)
 
                 _ ->

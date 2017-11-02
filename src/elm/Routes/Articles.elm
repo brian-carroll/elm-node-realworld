@@ -11,7 +11,7 @@ import Routes.Parser exposing (Parser, Method(..), m, (</>), s, string, map, one
 import Types exposing (..)
 import Models.User exposing (User, UserId, Username)
 import Models.Article exposing (Article, Slug(..))
-import HandlerState exposing (andThen, map2, wrapErrString)
+import HandlerState as HS exposing (andThen, andThen2, wrapErrString)
 import Routes.Api exposing (encodeDate)
 
 
@@ -140,7 +140,7 @@ getArticle authUsername slug =
 
         author =
             article
-                |> andThen (.author_id >> HandlerData)
+                |> HS.map .author_id
                 |> andThen Models.User.findById
 
         isFollowing =
@@ -150,10 +150,10 @@ getArticle authUsername slug =
 
                 _ ->
                     author
-                        |> andThen (.username >> HandlerData)
-                        |> map2 Models.User.isFollowing authUsername
+                        |> HS.map .username
+                        |> andThen2 Models.User.isFollowing authUsername
 
         authorProfileObj =
-            map2 Models.User.profileObj author isFollowing
+            andThen2 Models.User.profileObj author isFollowing
     in
-        map2 encodeSingleArticle article authorProfileObj
+        andThen2 encodeSingleArticle article authorProfileObj

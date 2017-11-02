@@ -9,7 +9,7 @@ import Routes.Parser exposing (Parser, Method(..), s, m, top, map, oneOf)
 -- local imports
 
 import Types exposing (..)
-import HandlerState exposing (andThen, onError, tryTask, wrapErrString, map2, map3)
+import HandlerState as HS exposing (andThen, onError, tryTask, wrapErrString, andThen2, andThen3)
 import Models.User
     exposing
         ( User
@@ -101,7 +101,7 @@ register secret conn =
     let
         formData =
             HandlerData conn.request.body
-                |> andThen (JD.decodeString decodeRegistrationForm >> HandlerData)
+                |> HS.map (JD.decodeString decodeRegistrationForm)
                 |> onError (wrapErrString UnprocessableEntity)
 
         hashAndSalt =
@@ -109,7 +109,7 @@ register secret conn =
                 |> andThen
                     (\form ->
                         AwaitingPort (HashPassword form.password) HandlerData
-                            |> andThen (JD.decodeValue decodeHashAndSalt >> HandlerData)
+                            |> HS.map (JD.decodeValue decodeHashAndSalt)
                             |> onError (wrapErrString InternalError)
                     )
 
@@ -124,14 +124,14 @@ register secret conn =
                 , salt = hashAndSalt.salt
                 }
     in
-        map2 createUser formData hashAndSalt
+        andThen2 createUser formData hashAndSalt
             |> andThen (saveUser secret conn)
 
 
 saveUser : Secret -> Connection -> User -> EndpointState
 saveUser secret conn user =
     Models.User.save user
-        |> andThen (HandlerData << authObj secret conn.timestamp)
+        |> HS.map (authObj secret conn.timestamp)
 
 
 type alias LoginForm =
@@ -154,12 +154,12 @@ login secret conn =
     let
         formData =
             HandlerData conn.request.body
-                |> andThen (JD.decodeString decodeLoginForm >> HandlerData)
+                |> HS.map (JD.decodeString decodeLoginForm)
                 |> onError (wrapErrString UnprocessableEntity)
 
         user =
             formData
-                |> andThen (.email >> HandlerData)
+                |> HS.map .email
                 |> andThen Models.User.findByEmail
 
         passwordIsValid formData user =
@@ -170,7 +170,8 @@ login secret conn =
                     , plainText = formData.password
                     }
                 )
-                (JD.decodeValue (JD.field "passwordIsValid" JD.bool) >> HandlerData)
+                HandlerData
+                |> HS.map (JD.decodeValue (JD.field "passwordIsValid" JD.bool))
                 |> onError (wrapErrString InternalError)
 
         generateResponse user isValid =
@@ -182,15 +183,15 @@ login secret conn =
                     , messages = [ "Wrong username or password" ]
                     }
     in
-        map2 passwordIsValid formData user
-            |> map2 generateResponse user
+        andThen2 passwordIsValid formData user
+            |> andThen2 generateResponse user
 
 
 getCurrentUser : Secret -> HandlerState EndpointError Username -> Connection -> EndpointState
 getCurrentUser secret authUsername conn =
     authUsername
         |> andThen findByUsername
-        |> andThen (HandlerData << authObj secret conn.timestamp)
+        |> HS.map (authObj secret conn.timestamp)
 
 
 type alias PutUserForm =
@@ -218,7 +219,7 @@ updateUser secret authUsername conn =
     let
         formUser =
             HandlerData conn.request.body
-                |> andThen (JD.decodeString putUserFormDecoder >> HandlerData)
+                |> HS.map (JD.decodeString putUserFormDecoder)
                 |> onError (wrapErrString UnprocessableEntity)
 
         dbUser =
@@ -232,7 +233,7 @@ updateUser secret authUsername conn =
 
                 Just plainText ->
                     AwaitingPort (HashPassword plainText) HandlerData
-                        |> andThen (JD.decodeValue decodeHashAndSalt >> HandlerData)
+                        |> HS.map (JD.decodeValue decodeHashAndSalt)
                         |> onError (wrapErrString InternalError)
 
         mergeUserData : PutUserForm -> User -> HashAndSalt -> HandlerState x User
@@ -253,6 +254,6 @@ updateUser secret authUsername conn =
                                 formUser.image
                 }
     in
-        map2 getHashAndSalt formUser dbUser
-            |> map3 mergeUserData formUser dbUser
+        andThen2 getHashAndSalt formUser dbUser
+            |> andThen3 mergeUserData formUser dbUser
             |> andThen (saveUser secret conn)

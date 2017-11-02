@@ -3,7 +3,7 @@ module Routes.Profiles exposing (ProfilesRoute, routeParser, dispatch)
 -- local imports
 
 import Types exposing (..)
-import HandlerState exposing (andThen, onError, tryTask, wrapErrString, map2, map3)
+import HandlerState exposing (andThen, onError, tryTask, wrapErrString, andThen2, andThen3)
 import Routes.Parser exposing (Parser, Method(..), m, (</>), s, string, map, oneOf)
 import Models.User
     exposing
@@ -60,36 +60,36 @@ getProfile authUsername profileUsername conn =
                     HandlerData False
 
                 _ ->
-                    map2 Models.User.isFollowing
+                    andThen2 Models.User.isFollowing
                         authUsername
                         (HandlerData profileUsername)
     in
-        map2 profileObj profileUser isFollowing
+        andThen2 profileObj profileUser isFollowing
 
 
 followProfile : HandlerState EndpointError Username -> Username -> Connection -> EndpointState
 followProfile authUsername profileUsername conn =
     let
         writeFollowToDb =
-            map2 Models.User.follow
+            andThen2 Models.User.follow
                 authUsername
                 (HandlerData profileUsername)
     in
         writeFollowToDb
             |> andThen (\_ -> HandlerData profileUsername)
             |> andThen findByUsername
-            |> map2 (flip profileObj) (HandlerData True)
+            |> andThen2 (flip profileObj) (HandlerData True)
 
 
 unfollowProfile : HandlerState EndpointError Username -> Username -> Connection -> EndpointState
 unfollowProfile authUsername profileUsername conn =
     let
         deleteFollowFromDb =
-            map2 Models.User.unfollow
+            andThen2 Models.User.unfollow
                 authUsername
                 (HandlerData profileUsername)
     in
         deleteFollowFromDb
             |> andThen (\_ -> HandlerData profileUsername)
             |> andThen findByUsername
-            |> map2 (flip profileObj) (HandlerData False)
+            |> andThen2 (flip profileObj) (HandlerData False)

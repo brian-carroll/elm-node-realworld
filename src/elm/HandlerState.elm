@@ -142,6 +142,12 @@ fromJson errCode decoder jsonHandlerData =
         |> onError (wrapErrString errCode)
 
 
+map : (a -> b) -> HandlerState x a -> HandlerState x b
+map f state =
+    state
+        |> andThen (f >> HandlerData)
+
+
 {-| Create a `HandlerState` from two other `HandlerState`s, after unwrapping the data from each of them.
 
 Example:
@@ -162,9 +168,9 @@ Example:
     loginUser hashedPassword dbUser =
         -- do stuff
 
-    -- Use map2 to apply the loginUser function
+    -- Use andThen2 to apply the loginUser function
     response =
-        map2 loginUser loginFormData userDataFromDb
+        andThen2 loginUser loginFormData userDataFromDb
 
 This is handy for breaking code into chunks and combine them back together again. It means we don't
 always have to use a single sequential chain. Code ends up being nicer and more readable.
@@ -172,8 +178,8 @@ always have to use a single sequential chain. Code ends up being nicer and more 
 The arguments to the function are evaluated in order.
 
 -}
-map2 : (a -> b -> HandlerState x c) -> HandlerState x a -> HandlerState x b -> HandlerState x c
-map2 f a b =
+andThen2 : (a -> b -> HandlerState x c) -> HandlerState x a -> HandlerState x b -> HandlerState x c
+andThen2 f a b =
     case a of
         HandlerData da ->
             b |> andThen (f da)
@@ -182,25 +188,25 @@ map2 f a b =
             HandlerError x
 
         AwaitingPort action cont ->
-            AwaitingPort action (cont >> (\hs -> map2 f hs b))
+            AwaitingPort action (cont >> (\hs -> andThen2 f hs b))
 
         AwaitingTask task ->
-            AwaitingTask (task |> Task.map (\hs -> map2 f hs b))
+            AwaitingTask (task |> Task.map (\hs -> andThen2 f hs b))
 
 
-{-| Same kind of thing as map2. Surprise!
+{-| Same kind of thing as andThen2. Surprise!
 -}
-map3 : (a -> b -> c -> HandlerState x d) -> HandlerState x a -> HandlerState x b -> HandlerState x c -> HandlerState x d
-map3 f a b c =
+andThen3 : (a -> b -> c -> HandlerState x d) -> HandlerState x a -> HandlerState x b -> HandlerState x c -> HandlerState x d
+andThen3 f a b c =
     case a of
         HandlerData da ->
-            map2 (f da) b c
+            andThen2 (f da) b c
 
         HandlerError x ->
             HandlerError x
 
         AwaitingPort action cont ->
-            AwaitingPort action (cont >> (\hs -> map3 f hs b c))
+            AwaitingPort action (cont >> (\hs -> andThen3 f hs b c))
 
         AwaitingTask task ->
-            AwaitingTask (task |> Task.map (\hs -> map3 f hs b c))
+            AwaitingTask (task |> Task.map (\hs -> andThen3 f hs b c))
