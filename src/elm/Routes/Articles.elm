@@ -157,3 +157,11 @@ getArticle authUsername slug =
             andThen2 Models.User.profileObj author isFollowing
     in
         andThen2 encodeSingleArticle article authorProfileObj
+
+
+type alias CreateArticleForm =
+    { title : String
+    , description : String
+    , body : String
+    , tagList : List String
+    }
