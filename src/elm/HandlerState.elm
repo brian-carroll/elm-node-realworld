@@ -148,6 +148,15 @@ map f state =
         |> andThen (f >> HandlerData)
 
 
+map2 : (a -> b -> c) -> HandlerState x a -> HandlerState x b -> HandlerState x c
+map2 f a b =
+    let
+        fhs a b =
+            f a b |> HandlerData
+    in
+        andThen2 fhs a b
+
+
 {-| Create a `HandlerState` from two other `HandlerState`s, after unwrapping the data from each of them.
 
 Example:

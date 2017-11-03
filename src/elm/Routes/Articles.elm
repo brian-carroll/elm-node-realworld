@@ -2,15 +2,17 @@ module Routes.Articles exposing (ArticlesRoute, routeParser, dispatch)
 
 -- external imports
 
+import Json.Decode as JD
 import Json.Encode as JE
+import Date
 
 
 -- local imports
 
 import Routes.Parser exposing (Parser, Method(..), m, (</>), s, string, map, oneOf, parseRoute, top)
 import Types exposing (..)
-import Models.User exposing (User, UserId, Username)
-import Models.Article exposing (Article, Slug(..))
+import Models.User exposing (User, UserId(..), Username(..))
+import Models.Article exposing (Article, Slug(..), ArticleId(..))
 import HandlerState as HS exposing (andThen, andThen2, wrapErrString)
 import Routes.Api exposing (encodeDate)
 
@@ -165,3 +167,59 @@ type alias CreateArticleForm =
     , body : String
     , tagList : List String
     }
+
+
+createArticle : HandlerState EndpointError Username -> Slug -> Connection -> EndpointState
+createArticle authUsername slug conn =
+    let
+        formData : HandlerState EndpointError CreateArticleForm
+        formData =
+            (HandlerData <|
+                JD.decodeString
+                    (JD.map4 CreateArticleForm
+                        (JD.field "title" JD.string)
+                        (JD.field "description" JD.string)
+                        (JD.field "body" JD.string)
+                        (JD.field "tagList" (JD.list JD.string))
+                    )
+                    conn.request.body
+            )
+                |> HS.onError (wrapErrString UnprocessableEntity)
+
+        -- not handling tagList from form yet
+        buildArticle : CreateArticleForm -> UserId -> Article
+        buildArticle formData authorId =
+            let
+                dummyDateForDbToOverwrite =
+                    Date.fromTime 0
+            in
+                { id = UnsavedArticleId
+                , author_id = authorId
+                , slug = slug
+                , title = formData.title
+                , description = formData.description
+                , body = formData.body
+                , createdAt = dummyDateForDbToOverwrite
+                , updatedAt = dummyDateForDbToOverwrite
+                }
+
+        author : HandlerState EndpointError User
+        author =
+            authUsername
+                |> andThen Models.User.findByUsername
+
+        savedArticle : HandlerState EndpointError Article
+        savedArticle =
+            author
+                |> HS.map .id
+                |> HS.map2 buildArticle formData
+                |> HS.andThen Models.Article.save
+
+        -- TODO: save Tags with ArticleId & put them in encodeSingleArticle
+        {- -}
+        authorProfileObj =
+            HandlerData False
+                |> andThen2 Models.User.profileObj author
+    in
+        authorProfileObj
+            |> andThen2 encodeSingleArticle savedArticle
