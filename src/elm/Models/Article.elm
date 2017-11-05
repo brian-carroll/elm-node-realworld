@@ -121,10 +121,16 @@ getArticles =
 sqlSelectArticle : String
 sqlSelectArticle =
     """
-    select a.id, author_id, slug, title, description, body,
-        to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at,
-        to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at
-    from articles as a
+    select
+        articles.id,
+        articles.author_id,
+        articles.slug,
+        articles.title,
+        articles.description,
+        articles.body,
+        to_char(articles.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at,
+        to_char(articles.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at
+    from articles
     """
 
 
@@ -134,3 +140,98 @@ getArticleBySlug (Slug slug) =
         { sql = sqlSelectArticle ++ "where slug=$1;"
         , values = [ JE.string slug ]
         }
+
+
+type alias FilterOptions =
+    { tag : Maybe String
+    , author : Maybe String
+    , favourited : Maybe String
+    , followedBy : Maybe String
+    , limit : Maybe Int
+    , offset : Maybe Int
+    }
+
+
+type alias SqlSnippet =
+    { value : Maybe JE.Value
+    , joinClause : String
+    , whereClause : String
+    }
+
+
+{-| Filter Articles from the database, given a set of filter options
+-}
+filter : FilterOptions -> HandlerState EndpointError (List Article)
+filter filterOptions =
+    let
+        snippets =
+            [ { value = Maybe.map JE.string filterOptions.tag
+              , joinClause = "inner join tags on tags.article_id=articles.id"
+              , whereClause = "tags.body="
+              }
+            , { value = Maybe.map JE.string filterOptions.author
+              , joinClause = "inner join users as authors on articles.author_id=users.id"
+              , whereClause = "authors.username="
+              }
+            , { value = Maybe.map JE.string filterOptions.favourited
+              , joinClause = """
+                    inner join favourites on favourites.article_id=articles.id
+                    inner join users as users_favourites on favourites.user_id=users_favourites.id
+                """
+              , whereClause = "users_favourites.username="
+              }
+            , { value = Maybe.map JE.string filterOptions.followedBy
+              , joinClause = "inner join follows on follows.followed_id=authors.id"
+              , whereClause = "follows.follower_id="
+              }
+            ]
+
+        ( joinClause, whereClauses, jsValues ) =
+            filterHelp snippets "" [] []
+
+        whereClause =
+            case whereClauses of
+                [] ->
+                    ""
+
+                _ ->
+                    " where " ++ (String.join " and " whereClauses)
+
+        sql =
+            sqlSelectArticle
+                ++ joinClause
+                ++ whereClause
+                ++ (" limit " ++ (toString <| Maybe.withDefault 20 filterOptions.limit))
+                ++ (" offset " ++ (toString <| Maybe.withDefault 0 filterOptions.offset))
+                ++ " ;"
+    in
+        runSqlQuery
+            (JD.list decodeArticleFromDb)
+            { sql = sql
+            , values = jsValues
+            }
+
+
+filterHelp : List SqlSnippet -> String -> List String -> List JE.Value -> ( String, List String, List JE.Value )
+filterHelp sqlSnippets joinClause whereClauses jsValues =
+    case sqlSnippets of
+        [] ->
+            ( joinClause, whereClauses, jsValues )
+
+        sqlSnippet :: rest ->
+            case sqlSnippet.value of
+                Nothing ->
+                    filterHelp rest joinClause whereClauses jsValues
+
+                Just jsValue ->
+                    filterHelp
+                        rest
+                        (joinClause ++ " " ++ sqlSnippet.joinClause ++ " ")
+                        (whereClauses
+                            ++ [ sqlSnippet.whereClause
+                                    ++ "$"
+                                    ++ (toString (1 + List.length jsValues))
+                                    ++ " "
+                               ]
+                        )
+                        (jsValues ++ [ jsValue ])
