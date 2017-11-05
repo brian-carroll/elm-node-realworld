@@ -153,34 +153,23 @@ filterTestCase testCase =
         \() ->
             let
                 generatedSql =
-                    (case Models.Article.filter testCase.input of
+                    case Models.Article.filter testCase.input of
                         AwaitingPort (SqlQuery { sql, values }) continuation ->
                             normaliseWhitespace sql
 
                         _ ->
                             "--Could not match AwaitingPort--"
-                    )
 
                 expectedSql =
-                    (normaliseWhitespace testCase.output)
-
-                differences =
-                    if generatedSql == expectedSql then
-                        -- speed optimisation (diff is slow)
-                        [ NoChange expectedSql ]
-                    else
-                        Diff.diffChars
-                            expectedSql
-                            generatedSql
+                    normaliseWhitespace testCase.output
             in
-                case differences of
-                    [ NoChange _ ] ->
-                        Expect.pass
-
-                    d ->
-                        Expect.fail <|
-                            String.join "\n" <|
-                                List.map toString d
+                if generatedSql == expectedSql then
+                    Expect.pass
+                else
+                    Diff.diffChars expectedSql generatedSql
+                        |> List.map toString
+                        |> String.join "\n"
+                        |> Expect.fail
 
 
 all : Test
