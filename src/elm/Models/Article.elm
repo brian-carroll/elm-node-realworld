@@ -165,24 +165,28 @@ filter : FilterOptions -> HandlerState EndpointError (List Article)
 filter filterOptions =
     let
         snippets =
-            [ { value = Maybe.map JE.string filterOptions.tag
-              , joinClause = "inner join tags on tags.article_id=articles.id"
+            [ { joinClause = "inner join tags on tags.article_id=articles.id"
               , whereClause = "tags.body="
+              , value = Maybe.map JE.string filterOptions.tag
               }
-            , { value = Maybe.map JE.string filterOptions.author
-              , joinClause = "inner join users as authors on articles.author_id=users.id"
+            , { joinClause = "inner join users as authors on articles.author_id=users.id"
               , whereClause = "authors.username="
+              , value = Maybe.map JE.string filterOptions.author
               }
-            , { value = Maybe.map JE.string filterOptions.favourited
-              , joinClause = """
+            , { joinClause = """
                     inner join favourites on favourites.article_id=articles.id
                     inner join users as users_favourites on favourites.user_id=users_favourites.id
                 """
               , whereClause = "users_favourites.username="
+              , value = Maybe.map JE.string filterOptions.favourited
               }
-            , { value = Maybe.map JE.string filterOptions.followedBy
-              , joinClause = "inner join follows on follows.followed_id=authors.id"
-              , whereClause = "follows.follower_id="
+            , { joinClause = """
+                    inner join users as authors on articles.author_id=authors.id
+                    inner join follows on follows.followed_id=authors.id
+                    inner join users as follower_users on follows.follower_id=follower_users.id
+                """
+              , whereClause = "follower_users.username="
+              , value = Maybe.map JE.string filterOptions.followedBy
               }
             ]
 

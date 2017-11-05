@@ -6,6 +6,7 @@ import Models.Article exposing (FilterOptions, filter)
 import String
 import Types exposing (..)
 import Diff exposing (Change(..))
+import Json.Encode as JE
 
 
 defaultFilterOptions : FilterOptions
@@ -22,7 +23,7 @@ defaultFilterOptions =
 testCases =
     [ { label = "tag"
       , input = { defaultFilterOptions | tag = Just "mockTag" }
-      , output = """
+      , sql = """
             select
                 articles.id,
                 articles.author_id,
@@ -38,14 +39,15 @@ testCases =
                 limit 20 offset 0
             ;
         """
+      , values = [ JE.string "mockTag" ]
       }
     , { label = "tag & author"
       , input =
             { defaultFilterOptions
-                | tag = Just "stuffTag"
+                | tag = Just "mockTag"
                 , author = Just "brianc"
             }
-      , output = """
+      , sql = """
             select
                 articles.id,
                 articles.author_id,
@@ -63,15 +65,16 @@ testCases =
                 limit 20 offset 0
             ;
         """
+      , values = [ JE.string "mockTag", JE.string "brianc" ]
       }
     , { label = "tag & author & favourite"
       , input =
             { defaultFilterOptions
-                | tag = Just "stuffTag"
+                | tag = Just "mockTag"
                 , author = Just "brianc"
                 , favourited = Just "brianc"
             }
-      , output = """
+      , sql = """
             select
                 articles.id,
                 articles.author_id,
@@ -92,13 +95,14 @@ testCases =
                 limit 20 offset 0
             ;
         """
+      , values = [ JE.string "mockTag", JE.string "brianc", JE.string "brianc" ]
       }
     , { label = "feed"
       , input =
             { defaultFilterOptions
                 | followedBy = Just "brianc"
             }
-      , output = """
+      , sql = """
             select
                 articles.id,
                 articles.author_id,
@@ -109,11 +113,14 @@ testCases =
                 to_char(articles.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at,
                 to_char(articles.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at
             from articles
+                inner join users as authors on articles.author_id=authors.id
                 inner join follows on follows.followed_id=authors.id
-            where follows.follower_id=$1
+                inner join users as follower_users on follows.follower_id=follower_users.id
+            where follower_users.username=$1
                 limit 20 offset 0
             ;
         """
+      , values = [ JE.string "brianc" ]
       }
     , { label = "feed with limit and offset"
       , input =
@@ -122,7 +129,7 @@ testCases =
                 , limit = Just 50
                 , offset = Just 100
             }
-      , output = """
+      , sql = """
             select
                 articles.id,
                 articles.author_id,
@@ -133,11 +140,14 @@ testCases =
                 to_char(articles.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at,
                 to_char(articles.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at
             from articles
+                inner join users as authors on articles.author_id=authors.id
                 inner join follows on follows.followed_id=authors.id
-            where follows.follower_id=$1
+                inner join users as follower_users on follows.follower_id=follower_users.id
+            where follower_users.username=$1
                 limit 50 offset 100
             ;
         """
+      , values = [ JE.string "brianc" ]
       }
     ]
 
@@ -152,23 +162,24 @@ filterTestCase testCase =
     test testCase.label <|
         \() ->
             let
-                generatedSql =
+                ( generatedSql, values ) =
                     case Models.Article.filter testCase.input of
                         AwaitingPort (SqlQuery { sql, values }) continuation ->
-                            normaliseWhitespace sql
+                            ( normaliseWhitespace sql, values )
 
                         _ ->
-                            "--Could not match AwaitingPort--"
+                            ( "--Could not match AwaitingPort--", [] )
 
                 expectedSql =
-                    normaliseWhitespace testCase.output
+                    normaliseWhitespace testCase.sql
             in
-                if generatedSql == expectedSql then
+                if generatedSql == expectedSql && values == testCase.values then
                     Expect.pass
                 else
                     Diff.diffChars expectedSql generatedSql
                         |> List.map toString
                         |> String.join "\n"
+                        |> (\s -> s ++ "\nValues:" ++ toString values)
                         |> Expect.fail
 
 
