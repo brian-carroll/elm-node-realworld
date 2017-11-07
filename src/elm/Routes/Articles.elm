@@ -9,10 +9,26 @@ import Date
 
 -- local imports
 
-import Routes.Parser exposing (Parser, Method(..), m, (</>), s, string, map, oneOf, parseRoute, top)
+import Routes.Parser
+    exposing
+        ( Parser
+        , QueryParser
+        , Method(..)
+        , m
+        , (</>)
+        , s
+        , string
+        , map
+        , oneOf
+        , parseRoute
+        , top
+        , stringParam
+        , intParam
+        , (<?>)
+        )
 import Types exposing (..)
 import Models.User exposing (User, UserId(..), Username(..))
-import Models.Article exposing (Article, Slug(..), ArticleId(..))
+import Models.Article exposing (Article, Slug(..), ArticleId(..), FilterOptions)
 import HandlerState as HS exposing (andThen, andThen2, wrapErrString)
 import Routes.Api exposing (encodeDate)
 
@@ -21,9 +37,24 @@ type CommentId
     = CommentId String
 
 
+type alias ListOptions =
+    { tag : Maybe String
+    , author : Maybe String
+    , favourited : Maybe String
+    , limit : Maybe Int
+    , offset : Maybe Int
+    }
+
+
+type alias FeedOptions =
+    { limit : Maybe Int
+    , offset : Maybe Int
+    }
+
+
 type ArticlesRoute
-    = ListArticles
-    | FeedArticles
+    = ListArticles ListOptions
+    | FeedArticles FeedOptions
     | GetArticle Slug
     | CreateArticle
     | UpdateArticle Slug
@@ -45,11 +76,30 @@ commentId =
     map CommentId string
 
 
+listOptionsParser : Parser (ListOptions -> state) state
+listOptionsParser =
+    map ListOptions <|
+        top
+            <?> stringParam "tag"
+            <?> stringParam "author"
+            <?> stringParam "favourited"
+            <?> intParam "limit"
+            <?> intParam "offset"
+
+
+feedOptionsParser : Parser (FeedOptions -> state) state
+feedOptionsParser =
+    map FeedOptions <|
+        top
+            <?> intParam "limit"
+            <?> intParam "offset"
+
+
 routeParser : Parser (ArticlesRoute -> state) state
 routeParser =
     oneOf
-        [ map ListArticles (m GET top)
-        , map FeedArticles (m GET (s "feed"))
+        [ map ListArticles (m GET listOptionsParser)
+        , map FeedArticles (m GET (s "feed" </> feedOptionsParser))
         , map GetArticle (m GET slug)
         , map CreateArticle (m POST top)
         , map UpdateArticle (m PUT slug)
@@ -62,20 +112,20 @@ routeParser =
         ]
 
 
-dispatch : HandlerState EndpointError Username -> ArticlesRoute -> EndpointState
-dispatch authUsername route =
+dispatch : HandlerState EndpointError Username -> Connection -> ArticlesRoute -> EndpointState
+dispatch authUsername conn route =
     case route of
-        ListArticles ->
+        ListArticles filterOptions ->
             HandlerData JE.null
 
-        FeedArticles ->
+        FeedArticles filterOptions ->
             HandlerData JE.null
 
         GetArticle slug ->
             getArticle authUsername slug
 
         CreateArticle ->
-            HandlerData JE.null
+            createArticle authUsername conn
 
         UpdateArticle slug ->
             HandlerData JE.null
@@ -169,18 +219,19 @@ type alias CreateArticleForm =
     }
 
 
-createArticle : HandlerState EndpointError Username -> Slug -> Connection -> EndpointState
-createArticle authUsername slug conn =
+createArticle : HandlerState EndpointError Username -> Connection -> EndpointState
+createArticle authUsername conn =
     let
         formData : HandlerState EndpointError CreateArticleForm
         formData =
             (HandlerData <|
                 JD.decodeString
-                    (JD.map4 CreateArticleForm
-                        (JD.field "title" JD.string)
-                        (JD.field "description" JD.string)
-                        (JD.field "body" JD.string)
-                        (JD.field "tagList" (JD.list JD.string))
+                    (JD.field "article" <|
+                        JD.map4 CreateArticleForm
+                            (JD.field "title" JD.string)
+                            (JD.field "description" JD.string)
+                            (JD.field "body" JD.string)
+                            (JD.field "tagList" (JD.list JD.string))
                     )
                     conn.request.body
             )
@@ -195,7 +246,7 @@ createArticle authUsername slug conn =
             in
                 { id = UnsavedArticleId
                 , author_id = authorId
-                , slug = slug
+                , slug = Models.Article.titleToSlug formData.title
                 , title = formData.title
                 , description = formData.description
                 , body = formData.body

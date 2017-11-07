@@ -40,6 +40,15 @@ encodeSlug (Slug slug) =
     JE.string slug
 
 
+titleToSlug : String -> Slug
+titleToSlug title =
+    title
+        |> String.toLower
+        |> String.words
+        |> String.join "-"
+        |> Slug
+
+
 encodeArticleForDb : Article -> List JE.Value
 encodeArticleForDb article =
     let
@@ -97,7 +106,7 @@ save article =
                 UnsavedArticleId ->
                     """
                     INSERT INTO articles(author_id, slug, title, description, body)
-                    VALUES($1,$2,$3,$4,$5,$6) RETURNING *;
+                    VALUES($1,$2,$3,$4,$5) RETURNING *;
                     """
 
                 ArticleId _ ->
@@ -118,26 +127,10 @@ getArticles =
         }
 
 
-sqlSelectArticle : String
-sqlSelectArticle =
-    """
-    select
-        articles.id,
-        articles.author_id,
-        articles.slug,
-        articles.title,
-        articles.description,
-        articles.body,
-        to_char(articles.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at,
-        to_char(articles.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at
-    from articles
-    """
-
-
 getArticleBySlug : Slug -> HandlerState EndpointError Article
 getArticleBySlug (Slug slug) =
     runSqlQuery (JD.index 0 decodeArticleFromDb)
-        { sql = sqlSelectArticle ++ "where slug=$1;"
+        { sql = "select * from articles where slug=$1;"
         , values = [ JE.string slug ]
         }
 
@@ -202,7 +195,7 @@ filter filterOptions =
                     " where " ++ (String.join " and " whereClauses)
 
         sql =
-            sqlSelectArticle
+            "select articles.* from articles "
                 ++ joinClause
                 ++ whereClause
                 ++ (" limit " ++ (toString <| Maybe.withDefault 20 filterOptions.limit))
