@@ -9,7 +9,7 @@ import Json.Encode as JE
 
 -- local imports
 
-import Models.User exposing (UserId, encodeUserId)
+import Models.User exposing (UserId, Username(..), encodeUserId)
 import Models.Utils exposing (runSqlQuery)
 import Types exposing (..)
 
@@ -98,6 +98,19 @@ decodeArticleFromDb =
         (JD.field "updated_at" decodeDate)
 
 
+decodeFullArticleFromDb : JD.Decoder Article
+decodeFullArticleFromDb =
+    JD.map8 Article
+        (JD.field "id" (JD.map ArticleId JD.int))
+        (JD.field "author_id" (JD.map Models.User.UserId JD.int))
+        (JD.field "slug" (JD.map Slug JD.string))
+        (JD.field "title" JD.string)
+        (JD.field "description" JD.string)
+        (JD.field "body" JD.string)
+        (JD.field "created_at" decodeDate)
+        (JD.field "updated_at" decodeDate)
+
+
 save : Article -> HandlerState EndpointError Article
 save article =
     runSqlQuery (JD.index 0 decodeArticleFromDb)
@@ -135,6 +148,57 @@ getArticleBySlug (Slug slug) =
         }
 
 
+getFullArticleBySlug : Slug -> Int -> HandlerState EndpointError Article
+getFullArticleBySlug (Slug slug) userId =
+    runSqlQuery (JD.index 0 decodeFullArticleFromDb)
+        { sql = """
+            select
+                articles.*,
+                authors.*,
+                count(favourites) as favourites_count,
+                sum(case when favourites.user_id=5 then 1 else 0 end)>0 as favourited,
+                sum(case when follows.follower_id=5 then 1 else 0 end)>0 as following_author,
+                array(
+                    select tags.tag from
+                    article_tags inner join tags on article_tags.tag_id=tags.id
+                    where article_tags.article_id=articles.id
+                ) as tag_list
+            from articles
+                inner join users as authors on articles.author_id=authors.id
+                left join favourites on favourites.article_id=articles.id
+                left join follows on follows.followed_id=authors.id
+            group by
+                articles.id, authors.id
+            order by
+                articles.created_at desc
+            ;"""
+        , values = [ JE.int userId, JE.string slug ]
+        }
+
+
+
+{-
+   where
+       slug=$2
+
+    select
+        articles.*,
+        authors.*,
+        count(favourites) as favourites_count,
+        sum(case when favourites.user_id=5 then 1 else 0 end)>0 as favourited,
+        sum(case when follows.follower_id=5 then 1 else 0 end)>0 as following_author
+    from articles
+        inner join users as authors on articles.author_id=authors.id
+        left join favourites on favourites.article_id=articles.id
+        left join follows on follows.followed_id=authors.id
+    group by
+        articles.id, authors.id
+    order by
+        articles.created_at desc
+
+-}
+
+
 type alias FilterOptions =
     { tag : Maybe String
     , author : Maybe String
@@ -158,7 +222,10 @@ filter : FilterOptions -> HandlerState EndpointError (List Article)
 filter filterOptions =
     let
         snippets =
-            [ { joinClause = "inner join tags on tags.article_id=articles.id"
+            [ { joinClause = """
+                    inner join article_tags on article_tags.article_id=articles.id
+                    inner join tags on article_tags.tag_id=tags.id
+                """
               , whereClause = "tags.body="
               , value = Maybe.map JE.string filterOptions.tag
               }
@@ -200,7 +267,7 @@ filter filterOptions =
                 ++ whereClause
                 ++ (" limit " ++ (toString <| Maybe.withDefault 20 filterOptions.limit))
                 ++ (" offset " ++ (toString <| Maybe.withDefault 0 filterOptions.offset))
-                ++ " ;"
+                ++ " order by articles.created_at desc;"
     in
         runSqlQuery
             (JD.list decodeArticleFromDb)

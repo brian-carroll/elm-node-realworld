@@ -274,3 +274,44 @@ createArticle authUsername conn =
     in
         authorProfileObj
             |> andThen2 encodeSingleArticle savedArticle
+
+
+{-| list all articles
+
+    JSON content
+        - article data
+        - tag list (need separate query I think)
+        - author
+        - author followed by current user
+        - favourites count
+    DB query
+        - single article with all the trimmings
+            - good starting point!
+            - get all data in one query
+            - make a function to map it to JSON
+        - multiple articles
+            - with filtering
+            - article per row, with all tables in it
+            - map each row to JSON
+    Encoder
+        - Takes several models and encodes them all
+    Flow
+        - Big SQL query
+        - extract multiple model objects per row
+            (list of tuples)
+        - Map tuple to JSON
+    Plan
+        - SQL first?
+        - single article first
+            - encodeSingleArticle is in two endpoints: get and create
+            - encodeMultipleArticles not used yet, but just a mapping
+        - encoder first, follow the types, fix existing endpoints
+
+-}
+listArticles : HandlerState EndpointError Username -> ListOptions -> Connection -> EndpointState
+listArticles authUsername options conn =
+    let
+        x =
+            0
+    in
+        HandlerData JE.null

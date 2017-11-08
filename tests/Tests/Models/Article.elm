@@ -24,18 +24,11 @@ testCases =
     [ { label = "tag"
       , input = { defaultFilterOptions | tag = Just "mockTag" }
       , sql = """
-            select
-                articles.id,
-                articles.author_id,
-                articles.slug,
-                articles.title,
-                articles.description,
-                articles.body,
-                to_char(articles.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at,
-                to_char(articles.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at
+            select articles.*
             from articles
-                inner join tags on tags.article_id=articles.id
-            where tags.body=$1
+                inner join article_tags on article_tags.article_id=articles.id
+                inner join tags on article_tags.tag_id=tags.id
+            where tags.tag=$1
                 limit 20 offset 0
             ;
         """
@@ -48,17 +41,10 @@ testCases =
                 , author = Just "brianc"
             }
       , sql = """
-            select
-                articles.id,
-                articles.author_id,
-                articles.slug,
-                articles.title,
-                articles.description,
-                articles.body,
-                to_char(articles.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at,
-                to_char(articles.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at
+            select articles.*
             from articles
-                inner join tags on tags.article_id=articles.id
+                inner join article_tags on article_tags.article_id=articles.id
+                inner join tags on article_tags.tag_id=tags.id
                 inner join users as authors on articles.author_id=users.id
             where tags.body=$1
                 and authors.username=$2
@@ -75,17 +61,10 @@ testCases =
                 , favourited = Just "brianc"
             }
       , sql = """
-            select
-                articles.id,
-                articles.author_id,
-                articles.slug,
-                articles.title,
-                articles.description,
-                articles.body,
-                to_char(articles.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at,
-                to_char(articles.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at
+            select articles.*
             from articles
-                inner join tags on tags.article_id=articles.id
+                inner join article_tags on article_tags.article_id=articles.id
+                inner join tags on article_tags.tag_id=tags.id
                 inner join users as authors on articles.author_id=users.id
                 inner join favourites on favourites.article_id=articles.id
                 inner join users as users_favourites on favourites.user_id=users_favourites.id
@@ -103,15 +82,7 @@ testCases =
                 | followedBy = Just "brianc"
             }
       , sql = """
-            select
-                articles.id,
-                articles.author_id,
-                articles.slug,
-                articles.title,
-                articles.description,
-                articles.body,
-                to_char(articles.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at,
-                to_char(articles.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at
+            select articles.*
             from articles
                 inner join users as authors on articles.author_id=authors.id
                 inner join follows on follows.followed_id=authors.id
