@@ -118,15 +118,15 @@ save article =
             case article.id of
                 UnsavedArticleId ->
                     """
-                    INSERT INTO articles(author_id, slug, title, description, body)
-                    VALUES($1,$2,$3,$4,$5) RETURNING *;
+                    insert into articles(author_id, slug, title, description, body)
+                    values($1,$2,$3,$4,$5) returning *;
                     """
 
                 ArticleId _ ->
                     """
-                    UPDATE users SET
+                    update users set
                     author_id=$2, slug=$3, title=$4, description=$5, body=$6
-                    WHERE id=$1 RETURNING *;
+                    where id=$1 returning *;
                     """
         , values = encodeArticleForDb article
         }
@@ -135,7 +135,7 @@ save article =
 getArticles : HandlerState EndpointError (List Article)
 getArticles =
     runSqlQuery (JD.list decodeArticleFromDb)
-        { sql = "SELECT * FROM articles;"
+        { sql = "select * from articles;"
         , values = []
         }
 
@@ -156,8 +156,8 @@ getFullArticleBySlug (Slug slug) userId =
                 articles.*,
                 authors.*,
                 count(favourites) as favourites_count,
-                sum(case when favourites.user_id=5 then 1 else 0 end)>0 as favourited,
-                sum(case when follows.follower_id=5 then 1 else 0 end)>0 as following_author,
+                sum(case when favourites.user_id=$1 then 1 else 0 end)>0 as favourited,
+                sum(case when follows.follower_id=$1 then 1 else 0 end)>0 as following_author,
                 array(
                     select tags.tag from
                     article_tags inner join tags on article_tags.tag_id=tags.id
@@ -167,36 +167,16 @@ getFullArticleBySlug (Slug slug) userId =
                 inner join users as authors on articles.author_id=authors.id
                 left join favourites on favourites.article_id=articles.id
                 left join follows on follows.followed_id=authors.id
+            where
+                slug=$2
             group by
                 articles.id, authors.id
             order by
                 articles.created_at desc
-            ;"""
+            ;
+            """
         , values = [ JE.int userId, JE.string slug ]
         }
-
-
-
-{-
-   where
-       slug=$2
-
-    select
-        articles.*,
-        authors.*,
-        count(favourites) as favourites_count,
-        sum(case when favourites.user_id=5 then 1 else 0 end)>0 as favourited,
-        sum(case when follows.follower_id=5 then 1 else 0 end)>0 as following_author
-    from articles
-        inner join users as authors on articles.author_id=authors.id
-        left join favourites on favourites.article_id=articles.id
-        left join follows on follows.followed_id=authors.id
-    group by
-        articles.id, authors.id
-    order by
-        articles.created_at desc
-
--}
 
 
 type alias FilterOptions =
