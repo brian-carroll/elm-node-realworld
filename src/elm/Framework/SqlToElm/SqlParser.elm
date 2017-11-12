@@ -1,10 +1,4 @@
-module Framework.SqlToElm.SqlParser
-    exposing
-        ( SqlFunctionHeader
-        , ArgType(..)
-        , ReturnType(..)
-        , parseFunctionHeader
-        )
+module Framework.SqlToElm.SqlParser exposing (parseSqlFunctionHeader)
 
 {-| Parse header section of SQL 'create function' statements
 Only tested with PostgreSQL
@@ -12,6 +6,7 @@ Only tested with PostgreSQL
 
 import Char
 import Parser.LanguageKit
+import Framework.SqlToElm.Types exposing (..)
 import Parser
     exposing
         ( Parser
@@ -31,25 +26,8 @@ import Parser
         )
 
 
-type alias SqlFunctionHeader =
-    { name : String
-    , args : List ( String, ArgType )
-    , returnType : ReturnType
-    }
-
-
-type ArgType
-    = SqlInt
-    | SqlText
-
-
-type ReturnType
-    = ReturnSetOf String
-    | Return String
-
-
-parseFunctionHeader : String -> Result Error SqlFunctionHeader
-parseFunctionHeader sql =
+parseSqlFunctionHeader : String -> Result Error SqlFunctionHeader
+parseSqlFunctionHeader sql =
     run functionHeader sql
 
 
