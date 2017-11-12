@@ -5,153 +5,172 @@ Relies on certain code conventions
 Only tested with PostgreSQL
 -}
 
-import Parser exposing (..)
-import Parser.LanguageKit
-import Char
+import Parser exposing (Error)
+import Framework.SqlToElm.SqlParser as SqlParser
+    exposing
+        ( SqlFunctionHeader
+        , ArgType(..)
+        , ReturnType(..)
+        )
 
 
-type alias SqlFunction =
+convertSqlToElm : String -> Result Error String
+convertSqlToElm sql =
+    case SqlParser.parseFunctionHeader sql of
+        Err e ->
+            Err e
+
+        Ok header ->
+            header
+                |> mapNames
+                |> generateElm
+                |> Ok
+
+
+generateElm : ElmFunctionHeader -> String
+generateElm header =
+    (moduleHeader header.name ++ elmFunction header)
+        |> String.join "\n"
+
+
+moduleHeader : String -> List String
+moduleHeader moduleName =
+    [ "module " ++ moduleName ++ " exposing (..)"
+    , ""
+    , "import Json.Decode as JD"
+    , "import Json.Encode as JE"
+    , ""
+    , "encodeMaybe encoder val ="
+    , "    Maybe.withDefault JE.null <| Maybe.map encoder val"
+    , ""
+    ]
+
+
+capitalise : String -> String
+capitalise str =
+    let
+        first =
+            String.left 1 str
+
+        rest =
+            String.dropLeft 1 str
+    in
+        (String.toUpper first) ++ rest
+
+
+mapReturnType : String -> String
+mapReturnType tableName =
+    let
+        singular =
+            if String.endsWith "s" tableName then
+                String.dropRight 1 tableName
+            else
+                tableName
+    in
+        capitalise singular
+
+
+type alias ElmFunctionHeader =
     { name : String
     , args : List ( String, ArgType )
-    , returns : ReturnType
+    , returnType : String
     }
 
 
-type ArgType
-    = SqlInt
-    | SqlText
+mapNames : SqlFunctionHeader -> ElmFunctionHeader
+mapNames sqlHeader =
+    { name = snakeToCamel sqlHeader.name
+    , args =
+        List.map
+            (\( argName, argType ) ->
+                ( snakeToCamel argName
+                , argType
+                )
+            )
+            sqlHeader.args
+    , returnType =
+        case sqlHeader.returnType of
+            ReturnSetOf sqlTypeName ->
+                "(List " ++ (mapReturnType sqlTypeName) ++ ")"
+
+            Return sqlTypeName ->
+                mapReturnType sqlTypeName
+    }
 
 
-type ReturnType
-    = ReturnSetOf String
-    | Return String
+elmFunction : ElmFunctionHeader -> List String
+elmFunction { name, args, returnType } =
+    let
+        argsRecord =
+            "{"
+                ++ (String.join ", " <| List.map Tuple.first args)
+                ++ "}"
 
-
-whitespace : Parser ()
-whitespace =
-    Parser.LanguageKit.whitespace
-        { allowTabs = False -- LanguageKit.whitespace crashes when True!
-        , lineComment = Parser.LanguageKit.LineComment "--"
-        , multiComment = Parser.LanguageKit.UnnestableComment "/*" "*/"
-        }
-
-
-function : Parser SqlFunction
-function =
-    succeed SqlFunction
-        |. whitespace
-        |. functionDeclaration
-        |. whitespace
-        |= keep oneOrMore Char.isLower
-        |. whitespace
-        |= argList
-        |. whitespace
-        |. keyword "returns"
-        |. whitespace
-        |= returnType
-
-
-functionDeclaration : Parser ()
-functionDeclaration =
-    keyword "create"
-        |. whitespace
-        |. oneOf
-            [ (keyword "or"
-                |. whitespace
-                |. keyword "replace"
-                |. whitespace
-              )
-            , succeed ()
+        elmFunctionType =
+            [ name ++ " : "
+            , "    (JD.Decoder " ++ returnType ++ " -> { sql : String, values : List JE.Value } -> m)"
+            , "    -> JD.Decoder " ++ returnType
+            , "    -> " ++ argsRecord
+            , "    -> m"
             ]
-        |. keyword "function"
+
+        elmFunctionHeader =
+            name ++ " runSqlQuery decoder " ++ argsRecord ++ " ="
+
+        sqlFunctionCall =
+            "select * from "
+                ++ name
+                ++ "("
+                ++ (dollarArgs args)
+                ++ ");"
+
+        values =
+            List.map encodeArg args
+                |> String.join ("\n" ++ indent 3 ", ")
+    in
+        elmFunctionType
+            ++ [ elmFunctionHeader
+               , "    runSqlQuery decoder"
+               , "        { sql = \"" ++ sqlFunctionCall ++ "\""
+               , "        , values ="
+               , "            [ " ++ values
+               , "            ]"
+               , "        }"
+               ]
 
 
-returnType : Parser ReturnType
-returnType =
-    oneOf
-        [ map ReturnSetOf <|
-            succeed identity
-                |. keyword "setof"
-                |. whitespace
-                |= (map snakeToCamel <|
-                        keep oneOrMore
-                            Char.isLower
-                   )
-        , map (Return << snakeToCamel) <|
-            keep oneOrMore
-                Char.isLower
-        ]
+dollarArgs : List a -> String
+dollarArgs argList =
+    argList
+        |> List.indexedMap (\i _ -> "$" ++ toString i)
+        |> String.join ", "
 
 
-argList : Parser (List ( String, ArgType ))
-argList =
-    Parser.LanguageKit.sequence
-        { start = "("
-        , separator = ","
-        , end = ")"
-        , spaces = whitespace
-        , item = arg
-        , trailing = Parser.LanguageKit.Forbidden
-        }
+indent : Int -> String -> String
+indent n str =
+    (String.repeat n "    ") ++ str
 
 
-arg : Parser ( String, ArgType )
-arg =
-    succeed (,)
-        |. whitespace
-        |= argName
-        |. whitespace
-        |= argType
-        |. whitespace
-        |. oneOf [ argDefault, succeed () ]
+encodeArg : ( String, ArgType ) -> String
+encodeArg ( argName, argType ) =
+    case argType of
+        SqlInt ->
+            "encodeMaybe JE.int " ++ argName
 
-
-argDefault : Parser ()
-argDefault =
-    keyword "default"
-        |. ignore zeroOrMore (\c -> c /= ',' && c /= ')')
-
-
-argType : Parser ArgType
-argType =
-    oneOf
-        [ map (\_ -> SqlInt) (keyword "int")
-        , map (\_ -> SqlText) (keyword "text")
-        ]
-
-
-argName : Parser String
-argName =
-    succeed identity
-        |. repeat zeroOrMore (symbol "_")
-        |= (map snakeToCamel <|
-                keep oneOrMore
-                    (\c ->
-                        c == '_' || Char.isLower c
-                    )
-           )
+        SqlText ->
+            "encodeMaybe JE.string " ++ argName
 
 
 snakeToCamel : String -> String
 snakeToCamel snake =
-    let
-        ( camel, _ ) =
-            String.foldl snakeToCamelHelp ( "", False ) snake
-    in
-        camel
-
-
-snakeToCamelHelp : Char -> ( String, Bool ) -> ( String, Bool )
-snakeToCamelHelp c ( camel, capitalizeNext ) =
-    if c == '_' then
-        ( camel
-        , True
-        )
-    else if capitalizeNext then
-        ( camel ++ (String.fromChar <| Char.toUpper c)
-        , False
-        )
-    else
-        ( camel ++ (String.fromChar c)
-        , False
-        )
+    snake
+        |> String.split "_"
+        |> List.filter (not << String.isEmpty)
+        |> List.indexedMap
+            (\i s ->
+                if i == 0 then
+                    s
+                else
+                    capitalise s
+            )
+        |> String.join ""
