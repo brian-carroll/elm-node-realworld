@@ -543,3 +543,48 @@ JD.decodeValue (thingDecoder myQueryThingAlias) myQueryResultRow
         - no secret
 
 => So put currentUser into conn but not secret
+
+## SQL & Elm
+- Ended up writing complex string manipulation. I hate that.
+    - As Raymond Hettinger would say, "There must be a better way!"
+
+- Would prefer to be able to write SQL
+    - Put SQL in SQL files
+    - Use SQL for what it's good at
+    - Nice perf, avoid round-trips on network
+    - Use SQL REPL to develop the query
+    - SQL syntax highlighting in editor
+    - Implementation
+        - Import queries from JS, pass to Elm as a Dict
+        - Generate Elm code for type safety?
+    - Do I need naming conventions?
+    - Can I get types?
+
+- Book "Mastering PostgreSQL in Application Development"
+    - Good timing, appeared on HN just as I was thinking about this stuff
+    - I'm not the only one thinking this way! :)
+    - Encourages going all-in on SQL, treating it as source code like any other
+    - Use SQL for what it's good at, end up with fewer lines of code
+    - No stupid hard-to-test string processing
+    - Kris Jenkins' YeSQL library
+        - Generates Clojure functions from queries in `.sql` files
+        - Works with queries, not necessarily functions
+        - Magic SQL comments to do name-mapping
+        - Nice approach for dynamic languages
+        - Several spin-off libs, ports to other languages
+        - Some ports are for typed languages, but seem to be "stringly typed". Not very Elmy.
+
+- How to apply these ideas?
+    - Postgres stored functions
+        - Have type signatures => enables Elm code gen with types
+        - Syntax can be compatible with both `psql` and `node-postgres`
+        - Overall really nice compatibility!
+    - Queries with no types
+        - `String`s and `Json.Encode.Value`s, probably `List`s of these
+        - Treat files as dumb strings, read them into JS, send to Elm as 'flags' on startup (`Dict String String`)
+        - Use filenames as Dict keys? => Lots of small files, which maybe is fine? Or is it awkward?
+        - YeSQL uses comments to name queries
+        - Want/need to use `node-postgres`
+        - Variable syntax is the issue here
+        - `psql` variables use colons but `node-postgres` uses `$1` syntax. Prevents seamless switching between the two :(
+        - The only place `$1` syntax is really used in Postgres is in SQL functions... So... back to the 'functions' option!

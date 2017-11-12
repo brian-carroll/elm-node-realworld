@@ -1,4 +1,4 @@
-create or replace function filter(
+create or replace function list(
     _tag text,
     _author text,
     _favourited text,
