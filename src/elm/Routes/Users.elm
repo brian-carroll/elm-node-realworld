@@ -3,13 +3,13 @@ module Routes.Users exposing (..)
 -- library imports
 
 import Json.Decode as JD
-import Routes.Parser exposing (Parser, Method(..), s, m, top, map, oneOf)
 
 
 -- local imports
 
 import Types exposing (..)
-import HandlerState as HS exposing (andThen, onError, tryTask, wrapErrString, andThen2, andThen3)
+import Framework.RouteParser exposing (Parser, Method(..), s, m, top, map, oneOf)
+import Framework.HandlerState as HS exposing (andThen, onError, tryTask, wrapErrString, andThen2, andThen3)
 import Models.User
     exposing
         ( User

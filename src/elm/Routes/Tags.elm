@@ -1,6 +1,6 @@
 module Routes.Tags exposing (..)
 
-import Routes.Parser exposing (Parser, Method(..), m, top, map)
+import Framework.RouteParser exposing (Parser, Method(..), m, top, map)
 
 
 type TagsRoute

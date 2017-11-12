@@ -3,8 +3,8 @@ module Routes.Profiles exposing (ProfilesRoute, routeParser, dispatch)
 -- local imports
 
 import Types exposing (..)
-import HandlerState exposing (andThen, onError, tryTask, wrapErrString, andThen2, andThen3)
-import Routes.Parser exposing (Parser, Method(..), m, (</>), s, string, map, oneOf)
+import Framework.HandlerState exposing (andThen, onError, tryTask, wrapErrString, andThen2, andThen3)
+import Framework.RouteParser exposing (Parser, Method(..), m, (</>), s, string, map, oneOf)
 import Models.User
     exposing
         ( User

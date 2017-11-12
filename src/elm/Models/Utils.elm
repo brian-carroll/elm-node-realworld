@@ -4,7 +4,7 @@ import Regex
 import Json.Decode as JD exposing (Decoder)
 import Json.Encode as JE
 import Types exposing (..)
-import HandlerState exposing (onError, wrapErrString)
+import Framework.HandlerState exposing (onError, wrapErrString)
 
 
 matchesRegex : Regex.Regex -> (String -> a) -> String -> Decoder a

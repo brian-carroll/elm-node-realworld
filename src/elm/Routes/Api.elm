@@ -10,7 +10,7 @@ import Json.Encode as JE
 -- local imports
 
 import Types exposing (..)
-import HandlerState exposing (map, andThen, onError, wrapErrString)
+import Framework.HandlerState exposing (map, andThen, onError, wrapErrString)
 import Models.User exposing (JwtPayload, verifyJWT)
 
 

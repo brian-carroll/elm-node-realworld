@@ -1,4 +1,4 @@
-module HandlerState exposing (..)
+module Framework.HandlerState exposing (..)
 
 import Types exposing (..)
 import Task exposing (Task)

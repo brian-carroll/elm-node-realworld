@@ -11,7 +11,7 @@ import Dict
 
 -- Internal modules
 
-import Connection exposing (decodeConnection, errorResponse, successResponse, encodeResponse)
+import Framework.Connection exposing (decodeConnection, errorResponse, successResponse, encodeResponse)
 import Types exposing (..)
 import Routes
 

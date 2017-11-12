@@ -1,4 +1,4 @@
-module Routes.Parser
+module Framework.RouteParser
     exposing
         ( Parser
         , ParseError(..)

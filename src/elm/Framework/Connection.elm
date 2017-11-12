@@ -1,4 +1,4 @@
-module Connection
+module Framework.Connection
     exposing
         ( decodeConnection
         , errorResponse

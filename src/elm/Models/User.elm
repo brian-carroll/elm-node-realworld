@@ -34,7 +34,7 @@ import JsonWebToken as JWT
 -- app imports
 
 import Types exposing (..)
-import HandlerState exposing (wrapErrString)
+import Framework.HandlerState exposing (wrapErrString)
 import Models.Utils
     exposing
         ( matchesRegex
