@@ -1,4 +1,4 @@
-module Framework.SqlToElm.SqlParser exposing (parseSqlFunctionHeader)
+module SqlToElm.SqlParser exposing (parseSqlFunctions)
 
 {-| Parse header section of SQL 'create function' statements
 Only tested with PostgreSQL
@@ -6,7 +6,7 @@ Only tested with PostgreSQL
 
 import Char
 import Parser.LanguageKit
-import Framework.SqlToElm.Types exposing (..)
+import SqlToElm.Types exposing (..)
 import Parser
     exposing
         ( Parser
@@ -20,30 +20,45 @@ import Parser
         , zeroOrMore
         , keyword
         , symbol
+        , ignoreUntil
+        , repeat
         , (|=)
         , (|.)
         , map
         )
 
 
-parseSqlFunctionHeader : String -> Result Error SqlFunctionHeader
-parseSqlFunctionHeader sql =
-    run functionHeader sql
+parseSqlFunctions : String -> Result Error (List SqlFunction)
+parseSqlFunctions sql =
+    run functionList sql
 
 
-functionHeader : Parser SqlFunctionHeader
-functionHeader =
-    succeed SqlFunctionHeader
+functionList : Parser (List SqlFunction)
+functionList =
+    repeat oneOrMore function
+        |. whitespace
+
+
+function : Parser SqlFunction
+function =
+    succeed SqlFunction
         |. whitespace
         |. functionDeclaration
         |. whitespace
-        |= keep oneOrMore Char.isLower
+        |= keep oneOrMore (\c -> Char.isLower c || c == '_')
         |. whitespace
         |= argList
         |. whitespace
         |. keyword "returns"
         |. whitespace
         |= returnType
+        |. whitespace
+        |. symbol "as"
+        |. whitespace
+        |. functionBody
+        |. whitespace
+        |. functionLanguage
+        |. whitespace
 
 
 whitespace : Parser ()
@@ -53,6 +68,18 @@ whitespace =
         , lineComment = Parser.LanguageKit.LineComment "--"
         , multiComment = Parser.LanguageKit.UnnestableComment "/*" "*/"
         }
+
+
+functionBody : Parser ()
+functionBody =
+    symbol "$$"
+        |. ignoreUntil "$$"
+
+
+functionLanguage : Parser ()
+functionLanguage =
+    symbol "language"
+        |. ignoreUntil ";"
 
 
 functionDeclaration : Parser ()

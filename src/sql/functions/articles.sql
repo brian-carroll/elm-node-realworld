@@ -1,4 +1,4 @@
-create or replace function list(
+create or replace function list_articles(
     _tag text,
     _author text,
     _favourited text,
@@ -28,3 +28,4 @@ as $$
     ;
 $$
 language sql;
+
