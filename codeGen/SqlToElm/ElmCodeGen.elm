@@ -7,7 +7,7 @@ generateElm : String -> List ElmFunctionHeader -> String
 generateElm moduleName functions =
     let
         header =
-            [ "module " ++ moduleName ++ " exposing (..)"
+            [ "module GeneratedCode." ++ moduleName ++ " exposing (..)"
             , ""
             , "import Json.Decode as JD"
             , "import Json.Encode as JE"

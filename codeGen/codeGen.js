@@ -28,7 +28,7 @@ const walk = (dir, callback) => {
 
 const convertSqlToElm = filepath =>
   fs.readFile(filepath, { encoding: 'utf8' }, (err, body) => {
-    console.log(filepath);
+    console.log('Reading:', filepath);
     if (err) throw err;
     elmApp.ports.jsToElm.send({
       path: filepath,
@@ -40,6 +40,7 @@ const writeElmFile = ({ path, body, error }) => {
   if (error) {
     throw new Error(error);
   }
+  console.log('Writing:', path);
   fs.writeFile(path, body, err => err && console.error(err));
 };
 
