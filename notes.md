@@ -588,3 +588,25 @@ JD.decodeValue (thingDecoder myQueryThingAlias) myQueryResultRow
         - Variable syntax is the issue here
         - `psql` variables use colons but `node-postgres` uses `$1` syntax. Prevents seamless switching between the two :(
         - The only place `$1` syntax is really used in Postgres is in SQL functions... So... back to the 'functions' option!
+
+
+## Refactoring
+- Replace JWT username with ID
+- Use Maybe instead of HandlerState
+- Create `HS.fromMaybe`
+- Get rid of `HandlerData` in the JSON functions
+- User model should be a full union of saved and unsaved
+
+## TODO
+- Translate type definitions SQL->Elm
+- Elm convert flat to structured
+    { article : Article
+    , author : User
+    , favouritesCount : Int
+    , favourited : Bool
+    , followingAuthor : Bool
+    , tagList : List String
+    }
+- Run SQL definitions on startup
+    - npm script to create functions
+    - idempotency
