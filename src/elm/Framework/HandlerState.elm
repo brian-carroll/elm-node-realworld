@@ -3,6 +3,7 @@ module Framework.HandlerState exposing (..)
 import Types exposing (..)
 import Task exposing (Task)
 import Json.Decode as JD
+import Http
 
 
 {-| Chain functions together in a pipeline to create an endpoint handler
@@ -20,202 +21,134 @@ andThen nextStage state =
         HandlerData data ->
             nextStage data
 
-        AwaitingPort outboundPortAction continuation ->
-            AwaitingPort outboundPortAction (continuation >> andThen nextStage)
+        AwaitingPort jsEffect continuation ->
+            AwaitingPort jsEffect (continuation >> andThen nextStage)
 
         AwaitingTask task ->
             AwaitingTask
                 (task |> Task.map (andThen nextStage))
 
 
-{-| Deal with a Result from a previous stage in the pipeline
-If the Result is an `Ok`, turn it into a `HandlerData`
-If the Result is an `Err`, turn it into a `HandlerError`, using the supplied function
--}
-onError : (y -> HandlerState x a) -> HandlerState x (Result y a) -> HandlerState x a
-onError mapError state =
-    case state of
-        HandlerError e ->
-            HandlerError e
-
-        HandlerData result ->
-            case result of
-                Ok data ->
-                    HandlerData data
-
-                Err e ->
-                    mapError e
-
-        AwaitingPort outboundPortAction continuation ->
-            AwaitingPort outboundPortAction (continuation >> onError mapError)
-
-        AwaitingTask task ->
-            AwaitingTask
-                (task |> Task.map (onError mapError))
+succeed : a -> HandlerState e a
+succeed data =
+    HandlerData data
 
 
-{-| Try a computation that may fail (i.e. returns a Result), as part of a handler pipeline.
-As the first argument, provide a function to transform the `Err` into a `HandlerError`
-
-    import Json.Decode as JD
-
-    HandlerData """{ "hello": "world" }"""
-        |> try HandlerError (HandlerData << JD.decodeString (JD.field "hello" JD.string))
-
-This is equivalent to
-
-    import Json.Decode as JD
-
-    HandlerData """{ "hello": "world" }"""
-        |> andThen (HandlerData << JD.decodeString (JD.field "hello" JD.string))
-        |> onError HandlerError
-
--}
-try : (x -> HandlerState y b) -> (a -> Result x b) -> HandlerState y a -> HandlerState y b
-try mapError f state =
-    case state of
-        HandlerError e ->
-            HandlerError e
-
-        HandlerData data ->
-            case f data of
-                Ok r ->
-                    HandlerData r
-
-                Err e ->
-                    mapError e
-
-        AwaitingPort outboundPortAction continuation ->
-            AwaitingPort outboundPortAction (continuation >> try mapError f)
-
-        AwaitingTask task ->
-            AwaitingTask (task |> Task.map (try mapError f))
+fail : e -> HandlerState e a
+fail err =
+    HandlerError err
 
 
-{-| Insert a Task into a pipeline
+fromResult : (x -> y) -> Result x a -> HandlerState y a
+fromResult errorMapper result =
+    case result of
+        Ok r ->
+            HandlerData r
 
-Example:
-
-    userDecoder : Json.Decode.Decoder User
-
-    fetchUser : String -> Task.Task
-    fetchUser username =
-        Http.get ("https://api.example.com/user/" ++ username) userDecoder
-            |> Http.toTask
-
-    pipeline : HandlerState Http.Error User
-    pipeline =
-        HandlerData "brian"
-            |> tryTask HandlerError fetchUser
-
-There is no equivalent of `onError` for `Task`s. It's better to handle success and error in one step.
-
--}
-tryTask : (x -> HandlerState y b) -> (a -> Task x b) -> HandlerState y a -> HandlerState y b
-tryTask mapError createTask state =
-    case state of
-        HandlerError e ->
-            HandlerError e
-
-        HandlerData data ->
-            createTask data
-                |> Task.map HandlerData
-                |> Task.onError (\e -> Task.succeed (mapError e))
-                |> AwaitingTask
-
-        AwaitingPort outboundPortAction continuation ->
-            AwaitingPort outboundPortAction (continuation >> tryTask mapError createTask)
-
-        AwaitingTask task ->
-            AwaitingTask (task |> Task.map (tryTask mapError createTask))
+        Err e ->
+            HandlerError (errorMapper e)
 
 
-wrapErrString : ErrorCode -> String -> HandlerState EndpointError a
-wrapErrString errCode message =
-    HandlerError { status = errCode, messages = [ message ] }
+fromJson : (String -> e) -> JD.Decoder a -> JD.Value -> HandlerState e a
+fromJson errorMapper decoder jsValue =
+    JD.decodeValue decoder jsValue
+        |> fromResult errorMapper
 
 
-fromJson : ErrorCode -> JD.Decoder a -> HandlerState EndpointError JD.Value -> HandlerState EndpointError a
-fromJson errCode decoder jsonHandlerData =
-    jsonHandlerData
-        |> andThen (JD.decodeValue decoder >> HandlerData)
-        |> onError (wrapErrString errCode)
+fromTask : (x -> y) -> Task x a -> HandlerState y a
+fromTask errorMapper task =
+    task
+        |> Task.map HandlerData
+        |> Task.onError
+            (\error ->
+                error
+                    |> errorMapper
+                    |> HandlerError
+                    |> Task.succeed
+            )
+        |> AwaitingTask
 
 
-map : (a -> b) -> HandlerState x a -> HandlerState x b
+fromHttp : (Http.Error -> e) -> Http.Request a -> HandlerState e a
+fromHttp errorMapper request =
+    request
+        |> Http.toTask
+        |> fromTask errorMapper
+
+
+fromJsEffect : (String -> e) -> JD.Decoder a -> JsEffect -> HandlerState e a
+fromJsEffect errorMapper decoder jsEffect =
+    AwaitingPort jsEffect
+        (\jsValue ->
+            fromJson errorMapper decoder jsValue
+        )
+
+
+map : (a -> b) -> HandlerState e a -> HandlerState e b
 map f state =
     state
-        |> andThen (f >> HandlerData)
+        |> andThen (\data -> HandlerData (f data))
 
 
 map2 : (a -> b -> c) -> HandlerState x a -> HandlerState x b -> HandlerState x c
 map2 f a b =
-    let
-        fhs a b =
-            f a b |> HandlerData
-    in
-        andThen2 fhs a b
+    map f a
+        |> andMap b
 
 
-{-| Create a `HandlerState` from two other `HandlerState`s, after unwrapping the data from each of them.
+map3 :
+    (a -> b -> c -> d)
+    -> HandlerState x a
+    -> HandlerState x b
+    -> HandlerState x c
+    -> HandlerState x d
+map3 f a b c =
+    map f a
+        |> andMap b
+        |> andMap c
 
-Example:
 
-    -- Hash a password by calling out to a JS crypto library
-    jsHashPassword : String -> HandlerState x PasswordHash
-    jsHashPassword plainText =
-        AwaitingPort (HashPassword plainText) (JD.decodeValue hashDecoder)
+map4 :
+    (a -> b -> c -> d -> e)
+    -> HandlerState x a
+    -> HandlerState x b
+    -> HandlerState x c
+    -> HandlerState x d
+    -> HandlerState x e
+map4 f a b c d =
+    map f a
+        |> andMap b
+        |> andMap c
+        |> andMap d
 
-    -- Fetch the user data from a remote DB server using HTTP
-    userDataFromDb : Int -> HandlerState x User
-    userDataFromDb userId =
-        AwaitingTask (fetchUserTask userId)
 
-    -- Function that logs in a User, given a password hash
-    -- The function operates on plain data, but we only have HandlerStates!
-    loginUser : PasswordHash -> User -> HandlerState x LoginResponse
-    loginUser hashedPassword dbUser =
-        -- do stuff
+andMap : HandlerState e a -> HandlerState e (a -> b) -> HandlerState e b
+andMap hsx hsf =
+    case hsf of
+        HandlerData f ->
+            map f hsx
 
-    -- Use andThen2 to apply the loginUser function
-    response =
-        andThen2 loginUser loginFormData userDataFromDb
+        HandlerError e ->
+            HandlerError e
 
-This is handy for breaking code into chunks and combine them back together again. It means we don't
-always have to use a single sequential chain. Code ends up being nicer and more readable.
-
-The arguments to the function are evaluated in order.
-
--}
-andThen2 : (a -> b -> HandlerState x c) -> HandlerState x a -> HandlerState x b -> HandlerState x c
-andThen2 f a b =
-    case a of
-        HandlerData da ->
-            b |> andThen (f da)
-
-        HandlerError x ->
-            HandlerError x
-
-        AwaitingPort action cont ->
-            AwaitingPort action (cont >> (\hs -> andThen2 f hs b))
+        AwaitingPort jsEffect cont ->
+            AwaitingPort jsEffect (cont >> (andMap hsx))
 
         AwaitingTask task ->
-            AwaitingTask (task |> Task.map (\hs -> andThen2 f hs b))
+            AwaitingTask (task |> Task.map (andMap hsx))
 
 
-{-| Same kind of thing as andThen2. Surprise!
--}
-andThen3 : (a -> b -> c -> HandlerState x d) -> HandlerState x a -> HandlerState x b -> HandlerState x c -> HandlerState x d
-andThen3 f a b c =
-    case a of
-        HandlerData da ->
-            andThen2 (f da) b c
+mapError : (x -> y) -> HandlerState x a -> HandlerState y a
+mapError f state =
+    case state of
+        HandlerData a ->
+            HandlerData a
 
-        HandlerError x ->
-            HandlerError x
+        HandlerError e ->
+            HandlerError (f e)
 
-        AwaitingPort action cont ->
-            AwaitingPort action (cont >> (\hs -> andThen3 f hs b c))
+        AwaitingPort jsEffect cont ->
+            AwaitingPort jsEffect (cont >> (mapError f))
 
         AwaitingTask task ->
-            AwaitingTask (task |> Task.map (\hs -> andThen3 f hs b c))
+            AwaitingTask (task |> Task.map (mapError f))

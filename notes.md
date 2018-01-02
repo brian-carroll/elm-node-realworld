@@ -592,7 +592,7 @@ JD.decodeValue (thingDecoder myQueryThingAlias) myQueryResultRow
 
 ## Refactoring
 - Replace JWT username with ID
-- Use Maybe instead of HandlerState
+    - Use Maybe instead of HandlerState
 - Create `HS.fromMaybe`
 - Get rid of `HandlerData` in the JSON functions
 - User model should be a full union of saved and unsaved
@@ -610,3 +610,39 @@ JD.decodeValue (thingDecoder myQueryThingAlias) myQueryResultRow
 - Run SQL definitions on startup
     - npm script to create functions
     - idempotency
+- Change HandlerState to match Elm conventions
+    - [ ] Get rid of `andThen2`
+    - [x] Write `andMap`
+    - [x] Rename tryTask -> fromTask
+    - [x] Rename try -> fromResult
+    - `fromJson : (String -> e) -> Decoder a -> HandlerState e JE.Value -> HandlerState e a`
+        - For first arg, create a whole set of error wrappers in Routes.Api
+    - `fromJsEffect : JsEffect -> Continuation e a -> HandlerState e a`
+    - All the unconventional stuff comes from having to map/andThen functions that return HandlerStates instead of plain values. How to get rid of those?
+    - Create JsEffects module
+        - Move these local closures into it
+            - hashAndSalt
+            - passwordIsValid
+            - runSqlQuery
+    - Examples
+        - passwordIsValid formData user
+            - create JsEffect
+            - add continuation (JSON decode)
+            - whole thing should probably be in a JsEffects module
+        - generateResponse user isValid
+            - could return a Result instead of HandlerState
+        - profileObj
+            - Just has HandlerData wrapper. Obvs wrong!
+        - findById, findByUsername, findByEmail...
+            - Only ever do SQL queries, no other type of thing
+            - Could just return {sql, value, decoder}
+            - Return type could be restricted a bit more
+            - Name the {sql, values} record type alias
+            - Maybe also add a decoder to the type and give it a type param
+
+
+
+fromResult is doing weird shit, should probably be just a map
+
+
+

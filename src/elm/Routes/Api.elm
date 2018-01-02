@@ -14,6 +14,11 @@ import Framework.HandlerState exposing (map, andThen, onError, wrapErrString)
 import Models.User exposing (JwtPayload, verifyJWT)
 
 
+wrapErrString : ErrorCode -> String -> HandlerState EndpointError a
+wrapErrString errCode message =
+    HandlerError { status = errCode, messages = [ message ] }
+
+
 requireAuth : Secret -> Connection -> HandlerState EndpointError JwtPayload
 requireAuth secret conn =
     case Dict.get "authorization" conn.request.headers of
