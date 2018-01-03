@@ -1,4 +1,4 @@
-module Routes.Api exposing (requireAuth, encodeDate)
+module Routes.Api exposing (requireAuth, encodeDate, error)
 
 -- library imports
 
@@ -10,30 +10,29 @@ import Json.Encode as JE
 -- local imports
 
 import Types exposing (..)
-import Framework.HandlerState exposing (map, andThen, onError, wrapErrString)
+import Framework.HandlerState exposing (map, andThen, mapError, fromResult, fail)
 import Models.User exposing (JwtPayload, verifyJWT)
 
 
-wrapErrString : ErrorCode -> String -> HandlerState EndpointError a
-wrapErrString errCode message =
-    HandlerError { status = errCode, messages = [ message ] }
+error : ErrorCode -> String -> EndpointError
+error errCode message =
+    { status = errCode, messages = [ message ] }
 
 
 requireAuth : Secret -> Connection -> HandlerState EndpointError JwtPayload
 requireAuth secret conn =
     case Dict.get "authorization" conn.request.headers of
         Nothing ->
-            wrapErrString Unauthorized "Authorization header required"
+            fail (error Unauthorized "Authorization header required")
 
         Just authHeader ->
             case String.words authHeader of
                 [ "Token", token ] ->
-                    HandlerData token
-                        |> map (verifyJWT secret conn.timestamp)
-                        |> onError (wrapErrString Unauthorized)
+                    verifyJWT secret conn.timestamp token
+                        |> fromResult (error Unauthorized)
 
                 _ ->
-                    wrapErrString Unauthorized "Invalid token"
+                    fail (error Unauthorized "Invalid token")
 
 
 digits : Int -> Int -> String

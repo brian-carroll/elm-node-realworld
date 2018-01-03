@@ -55,6 +55,12 @@ fromJson errorMapper decoder jsValue =
         |> fromResult errorMapper
 
 
+fromJsonString : (String -> e) -> JD.Decoder a -> String -> HandlerState e a
+fromJsonString errorMapper decoder str =
+    JD.decodeString decoder str
+        |> fromResult errorMapper
+
+
 fromTask : (x -> y) -> Task x a -> HandlerState y a
 fromTask errorMapper task =
     task
@@ -76,6 +82,15 @@ fromHttp errorMapper request =
         |> fromTask errorMapper
 
 
+{-| Insert a JavaScript port effect into your handler pipeline
+
+    fromJsEffect errorMapper decoder jsEffect
+
+    `errorMapper`   Function to format any errors according to your API spec
+    `decoder`       JSON decoder for data returned through the port
+    `jsEffect`      Data structure describing the port effect to be run
+
+-}
 fromJsEffect : (String -> e) -> JD.Decoder a -> JsEffect -> HandlerState e a
 fromJsEffect errorMapper decoder jsEffect =
     AwaitingPort jsEffect
@@ -84,6 +99,9 @@ fromJsEffect errorMapper decoder jsEffect =
         )
 
 
+{-| Take a function designed to work on plain values and
+use it on a wrapped value.
+-}
 map : (a -> b) -> HandlerState e a -> HandlerState e b
 map f state =
     state
@@ -122,6 +140,18 @@ map4 f a b c d =
         |> andMap d
 
 
+{-| Apply a function in a HandlerState to a value in a HandlerState
+Argument order is designed for pipelining
+You can use this to make `mapN` functions with as many arguments as you like
+
+    map5 f a b c d e =
+        map f a
+            |> andMap b
+            |> andMap c
+            |> andMap d
+            |> andMap e
+
+-}
 andMap : HandlerState e a -> HandlerState e (a -> b) -> HandlerState e b
 andMap hsx hsf =
     case hsf of
@@ -136,6 +166,13 @@ andMap hsx hsf =
 
         AwaitingTask task ->
             AwaitingTask (task |> Task.map (andMap hsx))
+
+
+{-| Flatten nested `HandlerState`s
+-}
+join : HandlerState x (HandlerState x b) -> HandlerState x b
+join =
+    andThen identity
 
 
 mapError : (x -> y) -> HandlerState x a -> HandlerState y a

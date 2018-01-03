@@ -29,8 +29,8 @@ import Framework.RouteParser
 import Types exposing (..)
 import Models.User exposing (User, UserId(..), Username(..))
 import Models.Article exposing (Article, Slug(..), ArticleId(..), FilterOptions)
-import Framework.HandlerState as HS exposing (andThen, andThen2, wrapErrString)
-import Routes.Api exposing (encodeDate)
+import Framework.HandlerState as HS
+import Routes.Api as Api
 import GeneratedCode.Articles
 
 
@@ -158,31 +158,29 @@ encodeArticle article authorProfileObj =
         , ( "description", JE.string article.description )
         , ( "body", JE.string article.body )
         , ( "tagList", JE.list [] )
-        , ( "createdAt", encodeDate article.createdAt )
-        , ( "updatedAt", encodeDate article.updatedAt )
+        , ( "createdAt", Api.encodeDate article.createdAt )
+        , ( "updatedAt", Api.encodeDate article.updatedAt )
         , ( "favorited", JE.bool False )
         , ( "favoritesCount", JE.int 0 )
         , ( "author", authorProfileObj )
         ]
 
 
-encodeSingleArticle : Article -> JE.Value -> HandlerState x JE.Value
+encodeSingleArticle : Article -> JE.Value -> JE.Value
 encodeSingleArticle article authorProfileObj =
-    HandlerData <|
-        JE.object [ ( "article", encodeArticle article authorProfileObj ) ]
+    JE.object [ ( "article", encodeArticle article authorProfileObj ) ]
 
 
-encodeMultipleArticles : List ( Article, JE.Value ) -> HandlerState x JE.Value
+encodeMultipleArticles : List ( Article, JE.Value ) -> JE.Value
 encodeMultipleArticles articlesData =
-    HandlerData <|
-        JE.object
-            [ ( "articles"
-              , JE.list <|
-                    List.map
-                        (\( article, authorProfileObj ) -> encodeArticle article authorProfileObj)
-                        articlesData
-              )
-            ]
+    JE.object
+        [ ( "articles"
+          , JE.list <|
+                List.map
+                    (\( article, authorProfileObj ) -> encodeArticle article authorProfileObj)
+                    articlesData
+          )
+        ]
 
 
 getArticle : HandlerState EndpointError Username -> Slug -> EndpointState
@@ -194,7 +192,7 @@ getArticle authUsername slug =
         author =
             article
                 |> HS.map .author_id
-                |> andThen Models.User.findById
+                |> HS.andThen Models.User.findById
 
         isFollowing =
             case authUsername of
@@ -204,12 +202,13 @@ getArticle authUsername slug =
                 _ ->
                     author
                         |> HS.map .username
-                        |> andThen2 Models.User.isFollowing authUsername
+                        |> HS.map2 Models.User.isFollowing authUsername
+                        |> HS.join
 
         authorProfileObj =
-            andThen2 Models.User.profileObj author isFollowing
+            HS.map2 Models.User.profileObj author isFollowing
     in
-        andThen2 encodeSingleArticle article authorProfileObj
+        HS.map2 encodeSingleArticle article authorProfileObj
 
 
 type alias CreateArticleForm =
@@ -225,18 +224,16 @@ createArticle authUsername conn =
     let
         formData : HandlerState EndpointError CreateArticleForm
         formData =
-            (HandlerData <|
-                JD.decodeString
-                    (JD.field "article" <|
-                        JD.map4 CreateArticleForm
-                            (JD.field "title" JD.string)
-                            (JD.field "description" JD.string)
-                            (JD.field "body" JD.string)
-                            (JD.field "tagList" (JD.list JD.string))
-                    )
-                    conn.request.body
-            )
-                |> HS.onError (wrapErrString UnprocessableEntity)
+            HS.fromJsonString
+                (Api.error UnprocessableEntity)
+                (JD.field "article" <|
+                    JD.map4 CreateArticleForm
+                        (JD.field "title" JD.string)
+                        (JD.field "description" JD.string)
+                        (JD.field "body" JD.string)
+                        (JD.field "tagList" (JD.list JD.string))
+                )
+                conn.request.body
 
         -- not handling tagList from form yet
         buildArticle : CreateArticleForm -> UserId -> Article
@@ -258,7 +255,7 @@ createArticle authUsername conn =
         author : HandlerState EndpointError User
         author =
             authUsername
-                |> andThen Models.User.findByUsername
+                |> HS.andThen Models.User.findByUsername
 
         savedArticle : HandlerState EndpointError Article
         savedArticle =
@@ -271,10 +268,10 @@ createArticle authUsername conn =
         {- -}
         authorProfileObj =
             HandlerData False
-                |> andThen2 Models.User.profileObj author
+                |> HS.map2 Models.User.profileObj author
     in
         authorProfileObj
-            |> andThen2 encodeSingleArticle savedArticle
+            |> HS.map2 encodeSingleArticle savedArticle
 
 
 listArticles : ListOptions -> Connection -> EndpointState
@@ -288,4 +285,4 @@ listArticles options conn =
     in
         sqlQuery
             |> HS.map (List.map (\a -> ( a, JE.null )))
-            |> andThen encodeMultipleArticles
+            |> HS.map encodeMultipleArticles

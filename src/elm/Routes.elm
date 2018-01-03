@@ -10,7 +10,8 @@ import Dict
 
 import Types exposing (..)
 import Framework.RouteParser exposing (Parser, ParseError(..), Route, oneOf, map, s, (</>), parseRoute)
-import Framework.HandlerState exposing (wrapErrString, andThen, onError)
+import Framework.HandlerState exposing (andThen, fromResult)
+import Routes.Api as Api
 import Routes.Users exposing (UsersRoute, urlParserUsers, urlParserUser)
 import Routes.Profiles exposing (ProfilesRoute)
 import Routes.Articles exposing (ArticlesRoute)
@@ -56,8 +57,7 @@ extractAuthUsername : Secret -> Connection -> HandlerState EndpointError Usernam
 extractAuthUsername secret conn =
     parseAuthToken secret conn
         |> Result.map .username
-        |> HandlerData
-        |> onError (wrapErrString Unauthorized)
+        |> fromResult (Api.error Unauthorized)
 
 
 dispatch : ProgramConfig -> Connection -> EndpointState

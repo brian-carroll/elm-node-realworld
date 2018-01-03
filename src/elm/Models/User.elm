@@ -34,7 +34,6 @@ import JsonWebToken as JWT
 -- app imports
 
 import Types exposing (..)
-import Framework.HandlerState exposing (wrapErrString)
 import Models.Utils
     exposing
         ( matchesRegex
@@ -144,7 +143,7 @@ findById : UserId -> HandlerState EndpointError User
 findById userId =
     case userId of
         UnsavedUserId ->
-            wrapErrString InternalError "Cannot find unsaved user"
+            HandlerError { status = InternalError, messages = [ "Cannot find unsaved user" ] }
 
         UserId id ->
             runSqlQuery (JD.index 0 decodeUser)
@@ -261,7 +260,7 @@ authObj secret now user =
             ]
 
 
-profileObj : User -> Bool -> HandlerState x JE.Value
+profileObj : User -> Bool -> JE.Value
 profileObj profileUser isFollowing =
     let
         image =
@@ -269,17 +268,16 @@ profileObj profileUser isFollowing =
                 "https://static.productionready.io/images/smiley-cyrus.jpg"
                 profileUser.image
     in
-        HandlerData <|
-            JE.object <|
-                [ ( "profile"
-                  , JE.object
-                        [ ( "username", encodeUsername profileUser.username )
-                        , ( "bio", JE.string profileUser.bio )
-                        , ( "image", JE.string image )
-                        , ( "following", JE.bool isFollowing )
-                        ]
-                  )
-                ]
+        JE.object <|
+            [ ( "profile"
+              , JE.object
+                    [ ( "username", encodeUsername profileUser.username )
+                    , ( "bio", JE.string profileUser.bio )
+                    , ( "image", JE.string image )
+                    , ( "following", JE.bool isFollowing )
+                    ]
+              )
+            ]
 
 
 type alias HashAndSalt =

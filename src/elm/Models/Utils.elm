@@ -4,7 +4,6 @@ import Regex
 import Json.Decode as JD exposing (Decoder)
 import Json.Encode as JE
 import Types exposing (..)
-import Framework.HandlerState exposing (onError, wrapErrString)
 
 
 matchesRegex : Regex.Regex -> (String -> a) -> String -> Decoder a
@@ -23,9 +22,17 @@ runSqlQuery decoder { sql, values } =
             , values = values
             }
         )
-        (HandlerData << JD.decodeValue (decodeSqlResults decoder))
-        |> onError (\jsonError -> wrapErrString InternalError jsonError)
-        |> onError (\dbError -> wrapErrString InternalError dbError)
+        (\jsValue ->
+            case JD.decodeValue (decodeSqlResults decoder) jsValue of
+                Ok (Ok data) ->
+                    HandlerData data
+
+                Ok (Err dbError) ->
+                    HandlerError { status = InternalError, messages = [ dbError ] }
+
+                Err jsonError ->
+                    HandlerError { status = InternalError, messages = [ jsonError ] }
+        )
 
 
 decodeSqlResults : JD.Decoder a -> JD.Decoder (Result String a)

@@ -3,15 +3,9 @@ module Routes.Profiles exposing (ProfilesRoute, routeParser, dispatch)
 -- local imports
 
 import Types exposing (..)
-import Framework.HandlerState exposing (andThen, onError, tryTask, wrapErrString, andThen2, andThen3)
+import Framework.HandlerState as HS
 import Framework.RouteParser exposing (Parser, Method(..), m, (</>), s, string, map, oneOf)
-import Models.User
-    exposing
-        ( User
-        , Username(..)
-        , profileObj
-        , findByUsername
-        )
+import Models.User exposing (User, Username(..))
 
 
 type ProfilesRoute
@@ -52,7 +46,7 @@ getProfile authUsername profileUsername conn =
     let
         profileUser =
             HandlerData profileUsername
-                |> andThen findByUsername
+                |> HS.andThen Models.User.findByUsername
 
         isFollowing =
             case authUsername of
@@ -60,36 +54,35 @@ getProfile authUsername profileUsername conn =
                     HandlerData False
 
                 _ ->
-                    andThen2 Models.User.isFollowing
-                        authUsername
-                        (HandlerData profileUsername)
+                    authUsername
+                        |> HS.andThen (flip Models.User.isFollowing profileUsername)
     in
-        andThen2 profileObj profileUser isFollowing
+        HS.map2 Models.User.profileObj
+            profileUser
+            isFollowing
 
 
 followProfile : HandlerState EndpointError Username -> Username -> Connection -> EndpointState
 followProfile authUsername profileUsername conn =
     let
         writeFollowToDb =
-            andThen2 Models.User.follow
-                authUsername
-                (HandlerData profileUsername)
+            authUsername
+                |> HS.andThen (flip Models.User.follow profileUsername)
     in
         writeFollowToDb
-            |> andThen (\_ -> HandlerData profileUsername)
-            |> andThen findByUsername
-            |> andThen2 (flip profileObj) (HandlerData True)
+            |> HS.map (\_ -> profileUsername)
+            |> HS.andThen Models.User.findByUsername
+            |> HS.map (flip Models.User.profileObj True)
 
 
 unfollowProfile : HandlerState EndpointError Username -> Username -> Connection -> EndpointState
 unfollowProfile authUsername profileUsername conn =
     let
         deleteFollowFromDb =
-            andThen2 Models.User.unfollow
-                authUsername
-                (HandlerData profileUsername)
+            authUsername
+                |> HS.map (flip Models.User.unfollow profileUsername)
     in
         deleteFollowFromDb
-            |> andThen (\_ -> HandlerData profileUsername)
-            |> andThen findByUsername
-            |> andThen2 (flip profileObj) (HandlerData False)
+            |> HS.map (\_ -> profileUsername)
+            |> HS.andThen Models.User.findByUsername
+            |> HS.map (flip Models.User.profileObj False)
