@@ -117,7 +117,8 @@ errorResponse { status, messages } conn =
                 [ ( "errors"
                   , JE.object
                         [ ( "body"
-                          , JE.list (List.map JE.string messages)
+                          , JE.list <|
+                                List.map JE.string messages
                           )
                         ]
                   )

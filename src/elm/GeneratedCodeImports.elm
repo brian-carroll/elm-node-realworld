@@ -3,7 +3,7 @@ module GeneratedCodeImports exposing (..)
 {-| Imports from handwritten code to generated code
 
 Central location for the generated code to import everything it needs from the handwritten code
-This project structure it easier to refactor things without changing code generation
+This project structure makes it easier to refactor things without changing code generation
 
 -}
 

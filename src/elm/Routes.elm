@@ -10,7 +10,7 @@ import Dict
 
 import Types exposing (..)
 import Framework.RouteParser exposing (Parser, ParseError(..), Route, oneOf, map, s, (</>), parseRoute)
-import Framework.HandlerState exposing (andThen, fromResult)
+import Framework.HandlerState as HS
 import Routes.Api as Api
 import Routes.Users exposing (UsersRoute, urlParserUsers, urlParserUser)
 import Routes.Profiles exposing (ProfilesRoute)
@@ -57,7 +57,7 @@ extractAuthUsername : Secret -> Connection -> HandlerState EndpointError Usernam
 extractAuthUsername secret conn =
     parseAuthToken secret conn
         |> Result.map .username
-        |> fromResult (Api.error Unauthorized)
+        |> HS.fromResult (Api.error Unauthorized)
 
 
 dispatch : ProgramConfig -> Connection -> EndpointState
@@ -79,21 +79,38 @@ dispatch config conn =
                         HandlerData JE.null
 
                     Profiles profilesRoute ->
-                        Routes.Profiles.dispatch authUsername conn profilesRoute
+                        Routes.Profiles.dispatch
+                            authUsername
+                            conn
+                            profilesRoute
 
                     Articles articlesRoute ->
-                        Routes.Articles.dispatch authUsername conn articlesRoute
+                        Routes.Articles.dispatch
+                            authUsername
+                            conn
+                            articlesRoute
 
                     Users usersRoute ->
-                        Routes.Users.dispatch config.secret authUsername conn usersRoute
+                        Routes.Users.dispatch
+                            config.secret
+                            authUsername
+                            conn
+                            usersRoute
 
             Err parseError ->
-                case parseError of
-                    UrlMismatch ->
-                        HandlerError { status = NotFound, messages = [] }
+                let
+                    status =
+                        case parseError of
+                            UrlMismatch ->
+                                NotFound
 
-                    MethodMismatch ->
-                        HandlerError { status = MethodNotAllowed, messages = [] }
+                            MethodMismatch ->
+                                MethodNotAllowed
 
-                    BadQueryString ->
-                        HandlerError { status = BadRequest, messages = [] }
+                            BadQueryString ->
+                                BadRequest
+                in
+                    HandlerError
+                        { status = status
+                        , messages = []
+                        }
