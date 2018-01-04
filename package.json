@@ -14,8 +14,10 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "elm-make src/elm/Main.elm --output build/elm.js",
-    "watch": "nodemon -w src -e elm,js --exec \"elm-make src/elm/Main.elm --output build/elm.js && node src/js/index.js\"",
+    "generate": "cd codeGen && elm make Main.elm --output ../build/code-gen-elm.js && node code-gen.js",
+    "watch-code-gen": "nodemon -w codeGen -e elm,js --exec \"cd codeGen && elm make Main.elm --output ../build/code-gen-elm.js && node code-gen.js\"",
+    "build": "npm run generate && elm-make src/elm/Main.elm --output build/elm.js",
+    "watch": "npm run watch-code-gen & nodemon -w src -e elm,js --exec \"elm-make src/elm/Main.elm --output build/elm.js && node src/js/index.js\"",
     "start": "npm run build && node src/js/index.js"
   },
   "author": "",

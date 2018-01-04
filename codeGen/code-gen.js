@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const Elm = require('./elm');
+const Elm = require('../build/code-gen-elm');
 
 const config = {
   sqlDir: fs.realpathSync(__dirname + '/../src/sql/functions'),
